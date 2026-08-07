@@ -36,7 +36,9 @@ export function SavingsGoalCard({
   onDelete,
 }: SavingsGoalCardProps) {
   const goalColor = goal.color || "#10b981";
-  const { percentage, remaining_amount, months_left, monthly_pace, is_completed } = goal;
+  const { percentage, remaining_amount, is_completed } = goal;
+  const months_left = goal.months_left || 0;
+  const monthly_pace = goal.monthly_pace || 0;
 
   return (
     <Card className="hover:border-border/80 transition-all shadow-sm group relative overflow-hidden flex flex-col justify-between">

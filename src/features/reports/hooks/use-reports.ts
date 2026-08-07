@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
 import { useCategories } from "@/features/categories/hooks/use-categories";
-import { TransactionWithCategoryAndAccount } from "@/types";
 
 export interface ReportFilterOptions {
   periodMode: "monthly" | "yearly" | "category";
@@ -45,11 +44,11 @@ export function useReports(options: ReportFilterOptions) {
     // 1. Summary Stats
     const totalIncome = filteredTransactions
       .filter((t) => t.type === "income")
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => s + Number(t.amount), 0);
 
     const totalExpense = filteredTransactions
       .filter((t) => t.type === "expense")
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => s + Number(t.amount), 0);
 
     const netSavings = totalIncome - totalExpense;
     const totalCount = filteredTransactions.length;
@@ -67,11 +66,11 @@ export function useReports(options: ReportFilterOptions) {
 
         const dayIncome = filteredTransactions
           .filter((t) => t.type === "income" && new Date(t.date).getDate() === dayNum)
-          .reduce((s, t) => s + t.amount, 0);
+          .reduce((s, t) => s + Number(t.amount), 0);
 
         const dayExpense = filteredTransactions
           .filter((t) => t.type === "expense" && new Date(t.date).getDate() === dayNum)
-          .reduce((s, t) => s + t.amount, 0);
+          .reduce((s, t) => s + Number(t.amount), 0);
 
         return { label: dayLabel, Income: dayIncome, Expenses: dayExpense };
       });
@@ -83,11 +82,11 @@ export function useReports(options: ReportFilterOptions) {
 
         const mIncome = filteredTransactions
           .filter((t) => t.type === "income" && new Date(t.date).getMonth() + 1 === mNum)
-          .reduce((s, t) => s + t.amount, 0);
+          .reduce((s, t) => s + Number(t.amount), 0);
 
         const mExpense = filteredTransactions
           .filter((t) => t.type === "expense" && new Date(t.date).getMonth() + 1 === mNum)
-          .reduce((s, t) => s + t.amount, 0);
+          .reduce((s, t) => s + Number(t.amount), 0);
 
         return { label: monthName, Income: mIncome, Expenses: mExpense };
       });
@@ -97,7 +96,7 @@ export function useReports(options: ReportFilterOptions) {
     const catMap: Record<string, number> = {};
     filteredTransactions.forEach((t) => {
       const catName = t.category?.name || (t.type === "transfer" ? "Transfers" : "Uncategorized");
-      catMap[catName] = (catMap[catName] || 0) + t.amount;
+      catMap[catName] = (catMap[catName] || 0) + Number(t.amount);
     });
 
     const totalAmountSum = Object.values(catMap).reduce((s, v) => s + v, 0);
@@ -124,16 +123,7 @@ export function useReports(options: ReportFilterOptions) {
         avgTxSize,
       },
       chartSeries,
-      categoryBreakdown:
-        categoryBreakdown.length > 0
-          ? categoryBreakdown
-          : [
-              { name: "Housing & Rent", value: 25000, percentage: 50, color: "#3b82f6" },
-              { name: "Groceries", value: 12000, percentage: 24, color: "#10b981" },
-              { name: "Utilities", value: 5000, percentage: 10, color: "#ef4444" },
-              { name: "Transportation", value: 4000, percentage: 8, color: "#f59e0b" },
-              { name: "Entertainment", value: 4000, percentage: 8, color: "#8b5cf6" },
-            ],
+      categoryBreakdown,
       filteredTransactions,
     };
   }, [txResult, categories, options, isLoading]);

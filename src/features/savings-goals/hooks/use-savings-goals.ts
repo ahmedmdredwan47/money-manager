@@ -1,122 +1,68 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { SavingsGoal, SavingsGoalInsert, SavingsGoalUpdate } from "@/types";
+import { SavingsGoal, SavingsGoalInsert, SavingsGoalUpdate, Account } from "@/types";
 import { SavingsGoalFormInput } from "../schemas/savings-goal-schema";
+import { useAccounts } from "@/features/accounts/hooks/use-accounts";
 
 export interface SavingsGoalWithCalculations extends SavingsGoal {
+  account?: Account | null;
   percentage: number;
   remaining_amount: number;
-  months_left: number | null;
-  monthly_pace: number | null;
+  months_left?: number;
+  monthly_pace?: number;
 }
-
-const SAMPLE_GOALS: SavingsGoal[] = [
-  {
-    id: "goal-1",
-    user_id: "demo-user",
-    account_id: "sample-1",
-    title: "Emergency Fund",
-    target_amount: 300000.00,
-    current_amount: 185000.00,
-    target_date: "2026-12-31",
-    color: "#10b981",
-    is_completed: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "goal-2",
-    user_id: "demo-user",
-    account_id: "sample-1",
-    title: "New Laptop & Workspace",
-    target_amount: 150000.00,
-    current_amount: 120000.00,
-    target_date: "2026-10-15",
-    color: "#3b82f6",
-    is_completed: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "goal-3",
-    user_id: "demo-user",
-    account_id: "sample-2",
-    title: "Vacation Trip to Cox's Bazar",
-    target_amount: 45000.00,
-    current_amount: 45000.00,
-    target_date: "2026-07-01",
-    color: "#ec4899",
-    is_completed: true,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "goal-4",
-    user_id: "demo-user",
-    account_id: "sample-1",
-    title: "Home Renovation",
-    target_amount: 500000.00,
-    current_amount: 125000.00,
-    target_date: "2027-06-30",
-    color: "#f59e0b",
-    is_completed: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
-let localMemoryGoals: SavingsGoal[] = [...SAMPLE_GOALS];
 
 export function useSavingsGoals() {
   const supabase = createClient();
+  const { data: accounts } = useAccounts();
 
   return useQuery<SavingsGoalWithCalculations[]>({
-    queryKey: ["savings-goals"],
+    queryKey: ["savings-goals", accounts],
     queryFn: async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      let rawGoals: SavingsGoal[] = localMemoryGoals;
-
-      if (user) {
-        const { data, error } = await (supabase as any)
-          .from("savings_goals")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (!error && data) {
-          rawGoals = data as SavingsGoal[];
-        }
+      if (!user) {
+        return [];
       }
 
-      const now = new Date();
+      const allAccounts = accounts || [];
+
+      const { data, error } = await (supabase as any)
+        .from("savings_goals")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching savings goals:", error.message);
+        throw new Error(error.message);
+      }
+
+      const rawGoals = (data as SavingsGoal[]) || [];
 
       return rawGoals.map((g) => {
-        const percentage = g.target_amount > 0 ? (g.current_amount / g.target_amount) * 100 : 0;
+        const accObj = allAccounts.find((a) => a.id === g.account_id) || null;
+        const percentage =
+          g.target_amount > 0
+            ? Math.min(100, Math.round((g.current_amount / g.target_amount) * 100))
+            : 0;
         const remaining_amount = Math.max(0, g.target_amount - g.current_amount);
 
-        let months_left: number | null = null;
-        let monthly_pace: number | null = null;
-
+        let months_left = 0;
+        let monthly_pace = 0;
         if (g.target_date) {
-          const targetDateObj = new Date(g.target_date);
-          const diffTime = targetDateObj.getTime() - now.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          months_left = Math.max(1, Math.ceil(diffDays / 30));
-
-          if (remaining_amount > 0 && months_left > 0) {
-            monthly_pace = remaining_amount / months_left;
-          } else {
-            monthly_pace = 0;
-          }
+          const now = new Date();
+          const target = new Date(g.target_date);
+          const diffMonths = (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth());
+          months_left = Math.max(1, diffMonths);
+          monthly_pace = remaining_amount > 0 ? remaining_amount / months_left : 0;
         }
-
-        const is_completed = g.current_amount >= g.target_amount;
 
         return {
           ...g,
-          is_completed,
+          account: accObj,
           percentage,
           remaining_amount,
           months_left,
@@ -137,32 +83,11 @@ export function useCreateSavingsGoal() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const isCompleted = (input.current_amount || 0) >= input.target_amount;
-
-      const newGoalPayload: SavingsGoalInsert = {
-        user_id: user?.id || "demo-user",
-        account_id: input.account_id || null,
-        title: input.title,
-        target_amount: input.target_amount,
-        current_amount: input.current_amount || 0,
-        target_date: input.target_date || null,
-        color: input.color || "#10b981",
-        is_completed: isCompleted,
-      };
-
-      const createdLocal: SavingsGoal = {
-        id: `goal-${Date.now()}`,
-        ...newGoalPayload,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as SavingsGoal;
-
       if (!user) {
-        localMemoryGoals = [createdLocal, ...localMemoryGoals];
-        return createdLocal;
+        throw new Error("You must be signed in to create a savings goal.");
       }
 
-      // Ensure profile row exists in public.profiles to satisfy user_id foreign key constraint
+      // Ensure profile row exists in public.profiles
       try {
         await (supabase as any).from("profiles").upsert(
           {
@@ -173,33 +98,30 @@ export function useCreateSavingsGoal() {
           { onConflict: "id" }
         );
       } catch (profileErr) {
-        console.warn("Could not upsert profile record prior to savings goal creation:", profileErr);
+        console.warn("Could not upsert profile record:", profileErr);
       }
 
-      let data: any = null;
-      let error: any = null;
+      const isCompleted = (input.current_amount || 0) >= input.target_amount;
 
-      try {
-        const res = await (supabase as any)
-          .from("savings_goals")
-          .insert(newGoalPayload)
-          .select()
-          .single();
-        data = res.data;
-        error = res.error;
-      } catch (err) {
-        error = err;
-      }
+      const newGoalPayload: SavingsGoalInsert = {
+        user_id: user.id,
+        account_id: input.account_id || null,
+        title: input.title,
+        target_amount: input.target_amount,
+        current_amount: input.current_amount || 0,
+        target_date: input.target_date || null,
+        color: input.color || "#10b981",
+        is_completed: isCompleted,
+      };
 
-      if (error || !data) {
-        console.warn("Supabase savings goal insert warning, using local memory fallback:", error?.message);
-        localMemoryGoals = [createdLocal, ...localMemoryGoals];
-        return createdLocal;
-      }
+      const { data, error } = await (supabase as any)
+        .from("savings_goals")
+        .insert(newGoalPayload)
+        .select()
+        .single();
 
-      const createdGoal = data as SavingsGoal;
-      localMemoryGoals = [createdGoal, ...localMemoryGoals.filter((g) => g.id !== createdGoal.id)];
-      return createdGoal;
+      if (error) throw new Error(error.message);
+      return data as SavingsGoal;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["savings-goals"] });
@@ -217,30 +139,28 @@ export function useUpdateSavingsGoal() {
         data: { user },
       } = await supabase.auth.getUser();
 
+      if (!user) {
+        throw new Error("You must be signed in to update a savings goal.");
+      }
+
       const isCompleted = (input.current_amount || 0) >= input.target_amount;
 
       const updatePayload: SavingsGoalUpdate = {
+        account_id: input.account_id || null,
         title: input.title,
         target_amount: input.target_amount,
         current_amount: input.current_amount || 0,
         target_date: input.target_date || null,
-        account_id: input.account_id || null,
-        color: input.color || "#10b981",
+        color: input.color,
         is_completed: isCompleted,
         updated_at: new Date().toISOString(),
       };
-
-      if (!user || id.startsWith("goal-")) {
-        localMemoryGoals = localMemoryGoals.map((g) =>
-          g.id === id ? ({ ...g, ...updatePayload } as SavingsGoal) : g
-        );
-        return localMemoryGoals.find((g) => g.id === id);
-      }
 
       const { data, error } = await (supabase as any)
         .from("savings_goals")
         .update(updatePayload)
         .eq("id", id)
+        .eq("user_id", user.id)
         .select()
         .single();
 
@@ -258,36 +178,27 @@ export function useDepositSavingsGoal() {
   const supabase = createClient();
 
   return useMutation({
-    mutationFn: async ({ id, depositAmount }: { id: string; depositAmount: number }) => {
+    mutationFn: async ({ id, amount }: { id: string; amount: number }) => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user || id.startsWith("goal-")) {
-        localMemoryGoals = localMemoryGoals.map((g) => {
-          if (g.id === id) {
-            const newCurrent = g.current_amount + depositAmount;
-            return {
-              ...g,
-              current_amount: newCurrent,
-              is_completed: newCurrent >= g.target_amount,
-              updated_at: new Date().toISOString(),
-            };
-          }
-          return g;
-        });
-        return localMemoryGoals.find((g) => g.id === id);
+      if (!user) {
+        throw new Error("You must be signed in to deposit to a savings goal.");
       }
 
-      // Fetch existing
-      const { data: existing } = await (supabase as any)
+      // Fetch current goal
+      const { data: goalData, error: fetchErr } = await (supabase as any)
         .from("savings_goals")
-        .select("current_amount, target_amount")
+        .select("*")
         .eq("id", id)
+        .eq("user_id", user.id)
         .single();
 
-      const newCurrent = ((existing?.current_amount as number) || 0) + depositAmount;
-      const isCompleted = newCurrent >= (existing?.target_amount || 0);
+      if (fetchErr || !goalData) throw new Error("Goal not found.");
+
+      const newCurrent = Number(goalData.current_amount || 0) + Number(amount);
+      const isCompleted = newCurrent >= Number(goalData.target_amount);
 
       const { data, error } = await (supabase as any)
         .from("savings_goals")
@@ -297,6 +208,7 @@ export function useDepositSavingsGoal() {
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
+        .eq("user_id", user.id)
         .select()
         .single();
 
@@ -319,12 +231,16 @@ export function useDeleteSavingsGoal() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user || id.startsWith("goal-")) {
-        localMemoryGoals = localMemoryGoals.filter((g) => g.id !== id);
-        return id;
+      if (!user) {
+        throw new Error("You must be signed in to delete a savings goal.");
       }
 
-      const { error } = await (supabase as any).from("savings_goals").delete().eq("id", id);
+      const { error } = await (supabase as any)
+        .from("savings_goals")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+
       if (error) throw new Error(error.message);
       return id;
     },

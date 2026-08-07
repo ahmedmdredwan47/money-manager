@@ -43,7 +43,7 @@ export function SavingsGoalDepositDialog({
     try {
       await depositMutation.mutateAsync({
         id: goal.id,
-        depositAmount: data.amount,
+        amount: data.amount,
       });
       reset();
       onOpenChange(false);

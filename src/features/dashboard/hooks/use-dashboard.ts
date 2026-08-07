@@ -5,27 +5,29 @@ import { useCategories } from "@/features/categories/hooks/use-categories";
 
 export function useDashboard() {
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
-  const { data: txResult, isLoading: txLoading } = useTransactions({ pageSize: 100 });
+  const { data: txResult, isLoading: txLoading } = useTransactions({ pageSize: 500 });
   const { data: categories } = useCategories();
 
   const isLoading = accountsLoading || txLoading;
+
   return useMemo(() => {
     const allAccounts = accounts || [];
     const allTransactions = txResult?.data || [];
     const allCategories = categories || [];
+
     const todayStr = new Date().toISOString().split("T")[0];
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth();
 
-    // 1. Current Balance
+    // 1. Current Balance (Sum of active accounts)
     const currentBalance = allAccounts
       .filter((a) => a.is_active)
-      .reduce((sum, a) => sum + a.balance, 0);
+      .reduce((sum, a) => sum + Number(a.balance), 0);
 
     // 2. Today's Expense
     const todaysExpense = allTransactions
       .filter((t) => t.type === "expense" && t.date === todayStr)
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount), 0);
 
     // 3. This Month Income & Expense
     const thisMonthIncome = allTransactions
@@ -34,7 +36,7 @@ export function useDashboard() {
         const d = new Date(t.date);
         return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const thisMonthExpense = allTransactions
       .filter((t) => {
@@ -42,7 +44,7 @@ export function useDashboard() {
         const d = new Date(t.date);
         return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       })
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + Number(t.amount), 0);
 
     // 4. Monthly Savings & Savings Rate
     const monthlySavings = thisMonthIncome - thisMonthExpense;
@@ -60,7 +62,7 @@ export function useDashboard() {
       .filter((t) => t.type === "expense")
       .forEach((t) => {
         const catName = t.category?.name || "Uncategorized";
-        categoryTotals[catName] = (categoryTotals[catName] || 0) + t.amount;
+        categoryTotals[catName] = (categoryTotals[catName] || 0) + Number(t.amount);
       });
 
     const categoryBreakdownData = Object.entries(categoryTotals)
@@ -96,7 +98,7 @@ export function useDashboard() {
           const td = new Date(t.date);
           return td.getFullYear() === year && td.getMonth() === monthIdx;
         })
-        .reduce((s, t) => s + t.amount, 0);
+        .reduce((s, t) => s + Number(t.amount), 0);
 
       const monthExpense = allTransactions
         .filter((t) => {
@@ -104,12 +106,12 @@ export function useDashboard() {
           const td = new Date(t.date);
           return td.getFullYear() === year && td.getMonth() === monthIdx;
         })
-        .reduce((s, t) => s + t.amount, 0);
+        .reduce((s, t) => s + Number(t.amount), 0);
 
       return {
         month: monthLabel,
-        Income: monthIncome || (i === 5 ? thisMonthIncome : Math.round(45000 + i * 5000)),
-        Expenses: monthExpense || (i === 5 ? thisMonthExpense : Math.round(25000 + i * 2500)),
+        Income: monthIncome,
+        Expenses: monthExpense,
       };
     });
 
@@ -122,26 +124,8 @@ export function useDashboard() {
       monthlySavings,
       savingsRate,
       recentTransactions,
-      categoryBreakdownData:
-        categoryBreakdownData.length > 0
-          ? categoryBreakdownData
-          : [
-              { name: "Housing", value: 18000, color: "#3b82f6", icon: "Home" },
-              { name: "Groceries", value: 6500, color: "#10b981", icon: "Utensils" },
-              { name: "Transport", value: 3200, color: "#f59e0b", icon: "Car" },
-              { name: "Utilities", value: 2800, color: "#ef4444", icon: "Zap" },
-              { name: "Entertainment", value: 2100, color: "#8b5cf6", icon: "Film" },
-            ],
-      topCategories:
-        topCategories.length > 0
-          ? topCategories
-          : [
-              { name: "Housing & Rent", value: 18000, percentage: 55, color: "#3b82f6", icon: "Home" },
-              { name: "Groceries & Food", value: 6500, percentage: 20, color: "#10b981", icon: "Utensils" },
-              { name: "Transportation", value: 3200, percentage: 10, color: "#f59e0b", icon: "Car" },
-              { name: "Utilities & Bills", value: 2800, percentage: 8, color: "#ef4444", icon: "Zap" },
-              { name: "Entertainment", value: 2100, percentage: 7, color: "#8b5cf6", icon: "Film" },
-            ],
+      categoryBreakdownData,
+      topCategories,
       monthlyTrendData,
     };
   }, [accounts, txResult, categories, isLoading]);

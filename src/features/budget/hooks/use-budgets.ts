@@ -1,12 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { Budget, BudgetInsert, BudgetUpdate, Category } from "@/types";
+import { Budget, BudgetInsert, BudgetUpdate, Category, TransactionWithCategoryAndAccount } from "@/types";
 import { BudgetFormInput } from "../schemas/budget-schema";
-import { useTransactions } from "@/features/transactions/hooks/use-transactions";
 import { useCategories } from "@/features/categories/hooks/use-categories";
+import { useTransactions } from "@/features/transactions/hooks/use-transactions";
 
 export interface BudgetWithCalculations extends Budget {
-  category?: Category | null;
+  category: Category | null;
   actual_spent: number;
   remaining_balance: number;
   percentage_used: number;
@@ -14,84 +14,41 @@ export interface BudgetWithCalculations extends Budget {
   is_exceeded: boolean;
 }
 
-const SAMPLE_BUDGETS: Budget[] = [
-  {
-    id: "bgt-1",
-    user_id: "demo-user",
-    category_id: "sys-2", // Groceries
-    amount_limit: 15000.00,
-    period: "monthly",
-    start_date: "2026-08-01",
-    end_date: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "bgt-2",
-    user_id: "demo-user",
-    category_id: "sys-1", // Housing & Rent
-    amount_limit: 25000.00,
-    period: "monthly",
-    start_date: "2026-08-01",
-    end_date: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "bgt-3",
-    user_id: "demo-user",
-    category_id: "sys-3", // Transportation
-    amount_limit: 5000.00,
-    period: "monthly",
-    start_date: "2026-08-01",
-    end_date: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: "bgt-4",
-    user_id: "demo-user",
-    category_id: "sys-7", // Utilities & Bills
-    amount_limit: 4000.00,
-    period: "monthly",
-    start_date: "2026-08-01",
-    end_date: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-];
-
-let localMemoryBudgets: Budget[] = [...SAMPLE_BUDGETS];
-
-export function useBudgets(selectedMonthStr?: string) {
+export function useBudgets(targetMonthStr?: string) {
   const supabase = createClient();
-  const targetMonth = selectedMonthStr || new Date().toISOString().slice(0, 7); // e.g. "2026-08"
-
-  const { data: txResult } = useTransactions({ pageSize: 200 });
   const { data: categories } = useCategories();
+  const { data: txResult } = useTransactions({ pageSize: 500 });
 
-  const allTransactions = txResult?.data || [];
-  const allCategories = categories || [];
+  const today = new Date();
+  const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const targetMonth = targetMonthStr || currentYearMonth;
 
   return useQuery<BudgetWithCalculations[]>({
-    queryKey: ["budgets", targetMonth, allTransactions.length],
+    queryKey: ["budgets", targetMonth, categories, txResult],
     queryFn: async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      let rawBudgets: Budget[] = localMemoryBudgets;
-
-      if (user) {
-        const { data, error } = await (supabase as any)
-          .from("budgets")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (!error && data) {
-          rawBudgets = data as Budget[];
-        }
+      if (!user) {
+        return [];
       }
+
+      const allCategories = categories || [];
+      const allTransactions = txResult?.data || [];
+
+      const { data, error } = await (supabase as any)
+        .from("budgets")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching budgets:", error.message);
+        throw new Error(error.message);
+      }
+
+      const rawBudgets = (data as Budget[]) || [];
 
       // Aggregate expense transactions for target month
       const categorySpentMap: Record<string, number> = {};
@@ -136,28 +93,11 @@ export function useCreateBudget() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const newBudgetPayload: BudgetInsert = {
-        user_id: user?.id || "demo-user",
-        category_id: input.category_id,
-        amount_limit: input.amount_limit,
-        period: input.period || "monthly",
-        start_date: `${input.month}-01`,
-        end_date: null,
-      };
-
-      const createdLocal: Budget = {
-        id: `bgt-${Date.now()}`,
-        ...newBudgetPayload,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as Budget;
-
       if (!user) {
-        localMemoryBudgets = [createdLocal, ...localMemoryBudgets];
-        return createdLocal;
+        throw new Error("You must be signed in to set a budget.");
       }
 
-      // Ensure profile row exists in public.profiles to satisfy user_id foreign key constraint
+      // Ensure profile row exists in public.profiles
       try {
         await (supabase as any).from("profiles").upsert(
           {
@@ -168,33 +108,26 @@ export function useCreateBudget() {
           { onConflict: "id" }
         );
       } catch (profileErr) {
-        console.warn("Could not upsert profile record prior to budget creation:", profileErr);
+        console.warn("Could not upsert profile record:", profileErr);
       }
 
-      let data: any = null;
-      let error: any = null;
+      const newBudgetPayload: BudgetInsert = {
+        user_id: user.id,
+        category_id: input.category_id,
+        amount_limit: input.amount_limit,
+        period: input.period || "monthly",
+        start_date: `${input.month}-01`,
+        end_date: null,
+      };
 
-      try {
-        const res = await (supabase as any)
-          .from("budgets")
-          .insert(newBudgetPayload)
-          .select()
-          .single();
-        data = res.data;
-        error = res.error;
-      } catch (err) {
-        error = err;
-      }
+      const { data, error } = await (supabase as any)
+        .from("budgets")
+        .insert(newBudgetPayload)
+        .select()
+        .single();
 
-      if (error || !data) {
-        console.warn("Supabase budget insert warning, using local memory fallback:", error?.message);
-        localMemoryBudgets = [createdLocal, ...localMemoryBudgets];
-        return createdLocal;
-      }
-
-      const createdBudget = data as Budget;
-      localMemoryBudgets = [createdBudget, ...localMemoryBudgets.filter((b) => b.id !== createdBudget.id)];
-      return createdBudget;
+      if (error) throw new Error(error.message);
+      return data as Budget;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
@@ -212,25 +145,23 @@ export function useUpdateBudget() {
         data: { user },
       } = await supabase.auth.getUser();
 
+      if (!user) {
+        throw new Error("You must be signed in to update a budget.");
+      }
+
       const updatePayload: BudgetUpdate = {
         category_id: input.category_id,
         amount_limit: input.amount_limit,
-        period: input.period,
+        period: input.period || "monthly",
         start_date: `${input.month}-01`,
         updated_at: new Date().toISOString(),
       };
-
-      if (!user || id.startsWith("bgt-")) {
-        localMemoryBudgets = localMemoryBudgets.map((b) =>
-          b.id === id ? ({ ...b, ...updatePayload } as Budget) : b
-        );
-        return localMemoryBudgets.find((b) => b.id === id);
-      }
 
       const { data, error } = await (supabase as any)
         .from("budgets")
         .update(updatePayload)
         .eq("id", id)
+        .eq("user_id", user.id)
         .select()
         .single();
 
@@ -253,12 +184,16 @@ export function useDeleteBudget() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user || id.startsWith("bgt-")) {
-        localMemoryBudgets = localMemoryBudgets.filter((b) => b.id !== id);
-        return id;
+      if (!user) {
+        throw new Error("You must be signed in to delete a budget.");
       }
 
-      const { error } = await (supabase as any).from("budgets").delete().eq("id", id);
+      const { error } = await (supabase as any)
+        .from("budgets")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+
       if (error) throw new Error(error.message);
       return id;
     },

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ThemeToggle } from "./theme-toggle";
@@ -22,6 +22,7 @@ import {
   Settings,
   LogOut,
 } from "lucide-react";
+import { TransactionFormDialog } from "@/features/transactions/components/transaction-form-dialog";
 
 interface NavbarProps {
   onOpenMobileSidebar: () => void;
@@ -30,6 +31,26 @@ interface NavbarProps {
 export function Navbar({ onOpenMobileSidebar }: NavbarProps) {
   const router = useRouter();
   const supabase = createClient();
+  const [currentUser, setCurrentUser] = useState<{ email?: string; name?: string; avatar?: string } | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const name = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
+        setCurrentUser({
+          email: user.email,
+          name,
+          avatar: user.user_metadata?.avatar_url,
+        });
+      }
+    }
+    loadUser();
+  }, [supabase]);
 
   const handleSignOut = async () => {
     try {
@@ -41,107 +62,120 @@ export function Navbar({ onOpenMobileSidebar }: NavbarProps) {
     }
   };
 
+  const getInitials = (name?: string) => {
+    if (!name) return "US";
+    const parts = name.trim().split(" ");
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+  };
+
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/40 bg-background/80 px-4 md:px-6 backdrop-blur-md transition-all">
-      {/* Left section */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onOpenMobileSidebar}
-          className="lg:hidden flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          aria-label="Open mobile menu"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-
-        {/* Global Search Bar Placeholder */}
-        <div className="hidden sm:flex items-center gap-2 rounded-xl border border-border/50 bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground w-64 md:w-80 hover:border-border transition-colors">
-          <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-xs truncate">Search transactions, accounts, categories...</span>
-          <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100">
-            <span className="text-xs">⌘</span>K
-          </kbd>
-        </div>
-      </div>
-
-      {/* Right section */}
-      <div className="flex items-center gap-2 md:gap-3">
-        {/* Quick Add Action */}
-        <Button
-          variant="gradient"
-          size="sm"
-          className="hidden sm:inline-flex items-center gap-1.5 shadow-sm"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Entry</span>
-        </Button>
-
-        {/* Theme Switcher */}
-        <ThemeToggle />
-
-        {/* Notifications Dropdown */}
-        <DropdownMenu
-          trigger={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative h-9 w-9 rounded-lg border border-border/40 hover:bg-accent text-muted-foreground hover:text-foreground"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-background" />
-              <span className="sr-only">Notifications</span>
-            </Button>
-          }
-        >
-          <DropdownMenuHeader>Notifications</DropdownMenuHeader>
-          <div className="px-3 py-2 text-xs text-muted-foreground">
-            <p className="font-semibold text-foreground">Welcome to WealthWise!</p>
-            <p className="mt-0.5">Your money manager application backbone is ready.</p>
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="text-xs text-emerald-500 justify-center font-medium">
-            Mark all as read
-          </DropdownMenuItem>
-        </DropdownMenu>
-
-        {/* User Profile Menu */}
-        <DropdownMenu
-          trigger={
-            <button className="flex items-center gap-2 rounded-full p-0.5 ring-offset-background transition-all hover:ring-2 hover:ring-emerald-500/50">
-              <Avatar
-                fallback="JD"
-                className="h-9 w-9 border-2 border-emerald-500/20"
-              />
-            </button>
-          }
-        >
-          <DropdownMenuHeader>
-            <div className="flex flex-col space-y-0.5">
-              <p className="text-sm font-semibold text-foreground">Alex Morgan</p>
-              <p className="text-xs font-normal text-muted-foreground">alex.morgan@wealthwise.io</p>
-            </div>
-          </DropdownMenuHeader>
-          <DropdownMenuItem>
-            <Link href="/profile" className="flex items-center gap-2 w-full">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span>Profile</span>
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-            <Link href="/settings" className="flex items-center gap-2 w-full">
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              <span>Settings</span>
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={handleSignOut}
-            className="text-destructive focus:text-destructive cursor-pointer"
+    <>
+      <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-border/40 bg-background/80 px-4 md:px-6 backdrop-blur-md transition-all">
+        {/* Left section */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenMobileSidebar}
+            className="lg:hidden flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            aria-label="Open mobile menu"
           >
-            <LogOut className="h-4 w-4" />
-            <span>Log out</span>
-          </DropdownMenuItem>
-        </DropdownMenu>
-      </div>
-    </header>
+            <Menu className="h-5 w-5" />
+          </button>
+
+          {/* Global Search Bar Placeholder */}
+          <div className="hidden sm:flex items-center gap-2 rounded-xl border border-border/50 bg-muted/40 px-3 py-1.5 text-sm text-muted-foreground w-64 md:w-80 hover:border-border transition-colors">
+            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-xs truncate">Search transactions, accounts, categories...</span>
+            <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100">
+              <span className="text-xs">⌘</span>K
+            </kbd>
+          </div>
+        </div>
+
+        {/* Right section */}
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Quick Add Action */}
+          <Button
+            variant="gradient"
+            size="sm"
+            onClick={() => setDialogOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Entry</span>
+          </Button>
+
+          {/* Theme Switcher */}
+          <ThemeToggle />
+
+          {/* Notifications Dropdown */}
+          <DropdownMenu
+            trigger={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9 rounded-lg border border-border/40 hover:bg-accent text-muted-foreground hover:text-foreground"
+              >
+                <Bell className="h-4 w-4" />
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-background" />
+                <span className="sr-only">Notifications</span>
+              </Button>
+            }
+          >
+            <DropdownMenuHeader>Notifications</DropdownMenuHeader>
+            <div className="px-3 py-2 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">Welcome to Money Manager!</p>
+              <p className="mt-0.5">Your accounts are connected to real Supabase PostgreSQL data.</p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="text-xs text-emerald-500 justify-center font-medium">
+              Mark all as read
+            </DropdownMenuItem>
+          </DropdownMenu>
+
+          {/* User Profile Menu */}
+          <DropdownMenu
+            trigger={
+              <button className="flex items-center gap-2 rounded-full p-0.5 ring-offset-background transition-all hover:ring-2 hover:ring-emerald-500/50">
+                <Avatar
+                  src={currentUser?.avatar}
+                  fallback={getInitials(currentUser?.name)}
+                  className="h-9 w-9 border-2 border-emerald-500/20"
+                />
+              </button>
+            }
+          >
+            <DropdownMenuHeader>
+              <div className="flex flex-col space-y-0.5">
+                <p className="text-sm font-semibold text-foreground">{currentUser?.name || "User"}</p>
+                <p className="text-xs font-normal text-muted-foreground">{currentUser?.email || "Signed in"}</p>
+              </div>
+            </DropdownMenuHeader>
+            <DropdownMenuItem>
+              <Link href="/profile" className="flex items-center gap-2 w-full">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span>Profile</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Link href="/settings" className="flex items-center gap-2 w-full">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <span>Settings</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              className="text-destructive focus:text-destructive cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Log out</span>
+            </DropdownMenuItem>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <TransactionFormDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+    </>
   );
 }
