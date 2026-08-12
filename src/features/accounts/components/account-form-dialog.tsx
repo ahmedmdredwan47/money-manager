@@ -12,6 +12,10 @@ import {
 } from "../schemas/account-schema";
 import { useCreateAccount, useUpdateAccount } from "../hooks/use-accounts";
 import { Account } from "@/types";
+import { useCryptoAssets } from "@/features/crypto-holdings/hooks/use-crypto-assets";
+import { useCreateCryptoHolding, useCryptoHoldings } from "@/features/crypto-holdings/hooks/use-crypto-holdings";
+import { useCryptoPrices } from "@/features/crypto-holdings/hooks/use-crypto-prices";
+import { cryptoBdtValueAsNumber, formatCryptoQuantity } from "@/features/crypto-holdings/utils";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -171,6 +175,35 @@ function CurrencySelect({ value, onChange, error }: CurrencySelectProps) {
   );
 }
 
+function CryptoSelect({ value, onChange, disabled = false }: { value: string; onChange: (id: string) => void; disabled?: boolean }) {
+  const { data: assets = [] } = useCryptoAssets();
+  const [search, setSearch] = useState("");
+  const selected = assets.find((asset) => asset.id === value);
+  const filtered = assets.filter((asset) =>
+    `${asset.name} ${asset.code}`.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return <div className="space-y-2">
+    <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Bitcoin, BTC..." className="h-10" />
+    <div className="max-h-36 overflow-y-auto rounded-lg border border-input bg-background py-1">
+      {filtered.map((asset) => <button key={asset.id} type="button" disabled={disabled} onClick={() => onChange(asset.id)} className={`flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/50 disabled:cursor-not-allowed ${asset.id === value ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold" : ""}`}>
+        <span>{asset.name} ({asset.code})</span>{asset.id === value && <Check className="h-4 w-4" />}
+      </button>)}
+      {filtered.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">No supported cryptocurrencies found</p>}
+    </div>
+    {selected && <p className="text-[11px] text-muted-foreground">Selected: {selected.name} ({selected.code})</p>}
+  </div>;
+}
+
+function CryptoValuePreview({ quantity, code, price }: { quantity: string; code: string; price?: string }) {
+  const value = price ? cryptoBdtValueAsNumber(quantity, price) : null;
+  if (!/^\d+(?:\.\d+)?$/.test(quantity)) return null;
+  return <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 text-xs">
+    <p className="font-mono font-bold text-foreground">{formatCryptoQuantity(quantity)} {code}</p>
+    <p className="mt-0.5 text-emerald-600 dark:text-emerald-400">{value === null ? "BDT value unavailable" : `≈ ${formatCurrency(value, "BDT")}`}</p>
+  </div>;
+}
+
 // ---------------------------------------------------------------------------
 // Main Form Dialog
 // ---------------------------------------------------------------------------
@@ -182,9 +215,20 @@ export function AccountFormDialog({
   const isEditing = Boolean(accountToEdit);
   const [error, setError] = useState<string | null>(null);
   const [currencyConfirmed, setCurrencyConfirmed] = useState(false);
+  const [assetKind, setAssetKind] = useState<"fiat" | "crypto">("fiat");
+  const [cryptoAssetId, setCryptoAssetId] = useState("");
+  const [cryptoQuantity, setCryptoQuantity] = useState("");
 
   const createAccountMutation = useCreateAccount();
   const updateAccountMutation = useUpdateAccount();
+  const createCryptoHoldingMutation = useCreateCryptoHolding();
+  const { data: cryptoHoldings = [] } = useCryptoHoldings();
+  const { data: cryptoAssets = [] } = useCryptoAssets();
+  const selectedCryptoAsset = cryptoAssets.find((asset) => asset.id === cryptoAssetId);
+  const existingCryptoHolding = accountToEdit
+    ? cryptoHoldings.find((holding) => holding.account_id === accountToEdit.id)
+    : undefined;
+  const { data: cryptoPrices } = useCryptoPrices(selectedCryptoAsset ? [selectedCryptoAsset.code] : []);
   const { data: ratesData } = useExchangeRates();
 
   const {
@@ -257,11 +301,24 @@ export function AccountFormDialog({
       });
     }
     setCurrencyConfirmed(false);
+    setAssetKind(existingCryptoHolding ? "crypto" : "fiat");
+    setCryptoAssetId(existingCryptoHolding?.crypto_asset_id || "");
+    setCryptoQuantity(existingCryptoHolding?.quantity || "");
     setError(null);
-  }, [accountToEdit, open, reset]);
+  }, [accountToEdit, open, reset, existingCryptoHolding]);
 
   const onSubmit = async (data: AccountFormInput) => {
     setError(null);
+    if (assetKind === "crypto") {
+      if (!isEditing && !selectedCryptoAsset) {
+        setError("Please select a supported cryptocurrency.");
+        return;
+      }
+      if (!/^\d+(?:\.\d+)?$/.test(cryptoQuantity) || /^0(?:\.0+)?$/.test(cryptoQuantity)) {
+        setError("Enter a positive cryptocurrency quantity using decimal notation.");
+        return;
+      }
+    }
     if (isCurrencyChanged && !currencyConfirmed) {
       setError(
         `Currency changed from ${accountToEdit?.currency || "BDT"} to ${selectedCurrency}. Please confirm the currency change below before saving.`
@@ -272,10 +329,23 @@ export function AccountFormDialog({
       if (isEditing && accountToEdit) {
         await updateAccountMutation.mutateAsync({
           id: accountToEdit.id,
-          input: data,
+          input: existingCryptoHolding
+            ? { ...data, type: "investment", balance: 0, currency: "BDT" }
+            : data,
         });
       } else {
-        await createAccountMutation.mutateAsync(data);
+        const account = await createAccountMutation.mutateAsync(
+          assetKind === "crypto"
+            ? { ...data, type: "investment", balance: 0, currency: "BDT" }
+            : data
+        );
+        if (assetKind === "crypto" && selectedCryptoAsset) {
+          await createCryptoHoldingMutation.mutateAsync({
+            account_id: account.id,
+            crypto_asset_id: selectedCryptoAsset.id,
+            quantity: cryptoQuantity,
+          });
+        }
       }
       onOpenChange(false);
     } catch (err: any) {
@@ -320,6 +390,13 @@ export function AccountFormDialog({
             <span>{error}</span>
           </div>
         )}
+
+        {!isEditing && <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground">Asset Type</label>
+          <div className="grid grid-cols-2 gap-2">
+            {([ ["fiat", "Fiat Currency"], ["crypto", "Cryptocurrency"] ] as const).map(([kind, label]) => <button key={kind} type="button" onClick={() => setAssetKind(kind)} className={`rounded-xl border p-2.5 text-xs font-semibold transition-all ${assetKind === kind ? "border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-border/60 text-muted-foreground hover:bg-muted/40"}`}>{label}</button>)}
+          </div>
+        </div>}
 
         {/* Account Type Selector Grid */}
         <div className="space-y-1.5">
@@ -369,7 +446,7 @@ export function AccountFormDialog({
         </div>
 
         {/* Balance & Currency */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {assetKind === "fiat" ? <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground">
               Current Balance
@@ -396,10 +473,15 @@ export function AccountFormDialog({
               error={errors.currency?.message}
             />
           </div>
-        </div>
+        </div> : <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5"><label className="text-xs font-semibold text-muted-foreground">Cryptocurrency</label><CryptoSelect value={cryptoAssetId} onChange={setCryptoAssetId} disabled={isEditing} /></div>
+          <div className="space-y-1.5"><label className="text-xs font-semibold text-muted-foreground">Quantity</label><Input value={cryptoQuantity} onChange={(event) => setCryptoQuantity(event.target.value)} disabled={isEditing} inputMode="decimal" placeholder="0.00000001" className="h-10 font-mono" />
+            {selectedCryptoAsset && cryptoQuantity && <CryptoValuePreview quantity={cryptoQuantity} code={selectedCryptoAsset.code} price={cryptoPrices?.prices[selectedCryptoAsset.code]?.bdtPrice} />}
+          </div>
+        </div>}
 
         {/* Live BDT Conversion Preview helper box */}
-        {isForeign && bdtPreview !== null && !isCurrencyChanged && (
+        {assetKind === "fiat" && isForeign && bdtPreview !== null && !isCurrencyChanged && (
           <div className="flex items-center justify-between p-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-xs">
             <div className="flex items-center gap-1.5">
               <span className="text-muted-foreground font-medium">BDT Equivalent:</span>

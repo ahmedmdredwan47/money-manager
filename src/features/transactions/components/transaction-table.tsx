@@ -3,6 +3,7 @@
 import React from "react";
 import { TransactionWithCategoryAndAccount } from "@/types";
 import { formatCurrency } from "@/lib/utils";
+import { formatCryptoQuantity } from "@/features/crypto-holdings/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -166,8 +167,7 @@ export function TransactionTable({
                             : "text-foreground"
                         }
                       >
-                        {isIncome ? "+" : isExpense ? "-" : ""}
-                        {formatCurrency(tx.amount, tx.currency || "BDT")}
+                        {tx.crypto_quantity ? <span className="flex flex-col items-end gap-0.5"><span>{isIncome ? "+" : "-"}{formatCryptoQuantity(tx.crypto_quantity)} {tx.crypto_asset?.code || "Crypto"}</span><span className="text-[10px] font-medium text-muted-foreground">≈ {formatCurrency(tx.bdt_amount ?? tx.amount, "BDT")}</span></span> : <>{isIncome ? "+" : isExpense ? "-" : ""}{formatCurrency(tx.amount, tx.currency || "BDT")}</>}
                       </span>
                     </td>
 

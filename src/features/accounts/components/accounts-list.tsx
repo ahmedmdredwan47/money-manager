@@ -5,6 +5,10 @@ import { useAccounts, useDeleteAccount } from "../hooks/use-accounts";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
 import { calculateAccountBalance, getAccountBalanceDetails } from "@/lib/account-utils";
 import { useExchangeRates, convertToBDT } from "@/lib/exchange-rates";
+import { useCryptoHoldings } from "@/features/crypto-holdings/hooks/use-crypto-holdings";
+import { useCryptoAssets } from "@/features/crypto-holdings/hooks/use-crypto-assets";
+import { useCryptoPrices } from "@/features/crypto-holdings/hooks/use-crypto-prices";
+import { cryptoBdtValueAsNumber } from "@/features/crypto-holdings/utils";
 import { AccountCard } from "./account-card";
 import { Account } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -37,6 +41,9 @@ export function AccountsList({
   const { data: txResult, isLoading: txLoading, isError: txError, error: txErr } = useTransactions({ pageSize: 500 });
   const deleteAccountMutation = useDeleteAccount();
   const { data: ratesData } = useExchangeRates();
+  const { data: cryptoHoldings = [] } = useCryptoHoldings();
+  const { data: cryptoAssets = [] } = useCryptoAssets();
+  const { data: cryptoPrices } = useCryptoPrices(cryptoAssets.map((asset) => asset.code));
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "bank" | "mfs" | "cash" | "card">("all");
@@ -105,6 +112,14 @@ export function AccountsList({
   const mfsBalance = allAccounts
     .filter((a) => (a.type === "bkash" || a.type === "nagad" || a.type === "rocket") && a.bdt_equivalent !== null)
     .reduce((sum, acc) => sum + (acc.bdt_equivalent ?? 0), 0);
+  const cryptoBalance = cryptoHoldings.reduce((sum, holding) => {
+    if (!allAccounts.find((account) => account.id === holding.account_id)?.is_active) return sum;
+    const asset = cryptoAssets.find((item) => item.id === holding.crypto_asset_id);
+    const price = asset ? cryptoPrices?.prices[asset.code]?.bdtPrice : undefined;
+    const value = price ? cryptoBdtValueAsNumber(holding.quantity, price) : null;
+    return sum + (value ?? 0);
+  }, 0);
+  const netWorth = totalBalance + cryptoBalance;
 
   const confirmDelete = async () => {
     if (!accountToDelete) return;
@@ -131,10 +146,10 @@ export function AccountsList({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
-              {formatCurrency(totalBalance, "BDT")}
+              {formatCurrency(netWorth, "BDT")}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Across {allAccounts.filter((a) => a.is_active).length} active accounts
+              Fiat balances + cryptocurrency holdings
             </p>
           </CardContent>
         </Card>
@@ -223,6 +238,11 @@ export function AccountsList({
               rates={ratesData?.rates}
               ratesFetchedAt={ratesData?.fetchedAt}
               ratesAreFallback={ratesData?.usingFallback}
+              cryptoHolding={(() => {
+                const holding = cryptoHoldings.find((item) => item.account_id === acc.id);
+                const asset = holding && cryptoAssets.find((item) => item.id === holding.crypto_asset_id);
+                return holding && asset ? { quantity: holding.quantity, code: asset.code, bdtPrice: cryptoPrices?.prices[asset.code]?.bdtPrice } : undefined;
+              })()}
             />
           ))}
         </div>

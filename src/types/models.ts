@@ -17,6 +17,8 @@ export type TablesUpdate<T extends keyof Database["public"]["Tables"]> =
 // ==========================================
 export type Profile = Tables<"profiles">;
 export type Account = Tables<"accounts">;
+export type CryptoAsset = Tables<"crypto_assets">;
+export type CryptoHolding = Tables<"crypto_holdings">;
 export type Category = Tables<"categories">;
 export type Transaction = Tables<"transactions">;
 export type Budget = Tables<"budgets">;
@@ -28,6 +30,8 @@ export type RecurringTransaction = Tables<"recurring_transactions">;
 // ==========================================
 export type ProfileInsert = TablesInsert<"profiles">;
 export type AccountInsert = TablesInsert<"accounts">;
+export type CryptoAssetInsert = TablesInsert<"crypto_assets">;
+export type CryptoHoldingInsert = TablesInsert<"crypto_holdings">;
 export type CategoryInsert = TablesInsert<"categories">;
 export type TransactionInsert = TablesInsert<"transactions">;
 export type BudgetInsert = TablesInsert<"budgets">;
@@ -39,6 +43,8 @@ export type RecurringTransactionInsert = TablesInsert<"recurring_transactions">;
 // ==========================================
 export type ProfileUpdate = TablesUpdate<"profiles">;
 export type AccountUpdate = TablesUpdate<"accounts">;
+export type CryptoAssetUpdate = TablesUpdate<"crypto_assets">;
+export type CryptoHoldingUpdate = TablesUpdate<"crypto_holdings">;
 export type CategoryUpdate = TablesUpdate<"categories">;
 export type TransactionUpdate = TablesUpdate<"transactions">;
 export type BudgetUpdate = TablesUpdate<"budgets">;
@@ -62,6 +68,7 @@ export interface TransactionWithCategoryAndAccount extends Transaction {
   category?: Category | null;
   account?: Account | null;
   transfer_account?: Account | null;
+  crypto_asset?: CryptoAsset | null;
 }
 
 export interface BudgetWithCategory extends Budget {
@@ -81,4 +88,3 @@ export interface AccountWithBalances extends Account {
   currency_code: string;
   bdt_equivalent: number | null;
 }
-

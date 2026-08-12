@@ -28,6 +28,9 @@ export const transactionSchema = z
     payee_merchant: z.string().optional().nullable(),
     description: z.string().optional().nullable(),
     status: z.enum(transactionStatuses).default("cleared"),
+    crypto_asset_id: z.string().optional().nullable(),
+    crypto_quantity: z.string().optional().nullable(),
+    crypto_code: z.string().optional().nullable(),
   })
   .refine(
     (data) => {

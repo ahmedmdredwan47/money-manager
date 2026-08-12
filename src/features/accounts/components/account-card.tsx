@@ -4,6 +4,7 @@ import React from "react";
 import { Account } from "@/types";
 import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 import { convertToBDT } from "@/lib/exchange-rates";
+import { cryptoBdtValueAsNumber, formatCryptoQuantity } from "@/features/crypto-holdings/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,6 +37,7 @@ interface AccountCardProps {
   ratesFetchedAt?: string;
   /** True when fallback (offline) rates are being used */
   ratesAreFallback?: boolean;
+  cryptoHolding?: { quantity: string; code: string; bdtPrice?: string };
 }
 
 export function AccountCard({
@@ -45,6 +47,7 @@ export function AccountCard({
   rates,
   ratesFetchedAt,
   ratesAreFallback,
+  cryptoHolding,
 }: AccountCardProps) {
   const getAccountStyle = (type: string) => {
     switch (type) {
@@ -131,6 +134,19 @@ export function AccountCard({
     isForeign && rates && rates[currency] && rates[currency] > 0
       ? 1 / rates[currency]
       : null;
+  const cryptoBdtValue = cryptoHolding?.bdtPrice
+    ? cryptoBdtValueAsNumber(cryptoHolding.quantity, cryptoHolding.bdtPrice)
+    : null;
+
+  const displayBalanceText = cryptoHolding
+    ? cryptoBdtValue !== null
+      ? formatCurrency(cryptoBdtValue, "BDT")
+      : "Unavailable"
+    : formatCurrency(account.balance, currency);
+
+  const isNegativeBalance = cryptoHolding
+    ? (cryptoBdtValue ?? 0) < 0
+    : account.balance < 0;
 
   return (
     <Card className="relative overflow-hidden group hover:border-emerald-500/40 transition-all shadow-sm">
@@ -182,26 +198,34 @@ export function AccountCard({
 
       <CardContent className="pt-2 space-y-2">
         {/* Primary balance row */}
+        {cryptoHolding ? <>
+          <div className="flex items-baseline justify-between"><span className="text-xs text-muted-foreground font-medium">Crypto Holding</span><span className="text-[10px] font-bold text-muted-foreground/70">{cryptoHolding.code}</span></div>
+          <div className="flex items-baseline justify-between"><span className="text-2xl font-bold font-mono tracking-tight">{formatCryptoQuantity(cryptoHolding.quantity)} {cryptoHolding.code}</span><Badge variant={account.is_active ? "success" : "outline"} className="text-[10px]">{account.is_active ? "Active" : "Archived"}</Badge></div>
+          <div className="mt-1 border-t border-border/40 pt-2"><div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">≈ BDT value</span><span className="text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400">{cryptoBdtValue === null ? "Unavailable" : formatCurrency(cryptoBdtValue, "BDT")}</span></div></div>
+        </> : <>
         <div className="flex items-baseline justify-between">
           <span className="text-xs text-muted-foreground font-medium">Available Balance</span>
           <span className="text-[10px] uppercase font-bold text-muted-foreground/70">{currency}</span>
         </div>
+        </>}
 
         <div className="flex items-baseline justify-between">
           <span
             className={`text-2xl font-bold font-mono tracking-tight ${
-              account.balance < 0 ? "text-rose-500" : "text-foreground"
+              isNegativeBalance ? "text-rose-500" : "text-foreground"
             }`}
           >
-            {formatCurrency(account.balance, currency)}
+            {displayBalanceText}
           </span>
-          <Badge variant={account.is_active ? "success" : "outline"} className="text-[10px]">
-            {account.is_active ? "Active" : "Archived"}
-          </Badge>
+          {!cryptoHolding && (
+            <Badge variant={account.is_active ? "success" : "outline"} className="text-[10px]">
+              {account.is_active ? "Active" : "Archived"}
+            </Badge>
+          )}
         </div>
 
         {/* BDT equivalent block — only for foreign-currency accounts */}
-        {isForeign && (
+        {!cryptoHolding && isForeign && (
           <div className="mt-1 pt-2 border-t border-border/40 space-y-1">
             {bdtEquivalent !== null ? (
               <>

@@ -4,12 +4,19 @@ import { useTransactions } from "@/features/transactions/hooks/use-transactions"
 import { useCategories } from "@/features/categories/hooks/use-categories";
 import { calculateAccountBalance, calculateAccountBdtBalance } from "@/lib/account-utils";
 import { useExchangeRates, convertToBDT, getTransactionBdtAmount } from "@/lib/exchange-rates";
+import { useCryptoHoldings } from "@/features/crypto-holdings/hooks/use-crypto-holdings";
+import { useCryptoAssets } from "@/features/crypto-holdings/hooks/use-crypto-assets";
+import { useCryptoPrices } from "@/features/crypto-holdings/hooks/use-crypto-prices";
+import { cryptoBdtValueAsNumber } from "@/features/crypto-holdings/utils";
 
 export function useDashboard() {
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const { data: txResult, isLoading: txLoading } = useTransactions({ pageSize: 500 });
   const { data: categories } = useCategories();
   const { data: ratesData } = useExchangeRates();
+  const { data: cryptoHoldings = [] } = useCryptoHoldings();
+  const { data: cryptoAssets = [] } = useCryptoAssets();
+  const { data: cryptoPrices } = useCryptoPrices(cryptoAssets.map((asset) => asset.code));
 
   const isLoading = accountsLoading || txLoading;
 
@@ -18,6 +25,13 @@ export function useDashboard() {
     const allTransactions = txResult?.data || [];
     const allCategories = categories || [];
     const rates = ratesData?.rates ?? { BDT: 1 };
+    const cryptoBalance = cryptoHoldings.reduce((sum, holding) => {
+      if (!allAccounts.find((account) => account.id === holding.account_id)?.is_active) return sum;
+      const asset = cryptoAssets.find((item) => item.id === holding.crypto_asset_id);
+      const price = asset ? cryptoPrices?.prices[asset.code]?.bdtPrice : undefined;
+      const value = price ? cryptoBdtValueAsNumber(holding.quantity, price) : null;
+      return sum + (value ?? 0);
+    }, 0);
 
     const todayStr = new Date().toISOString().split("T")[0];
     const currentYear = new Date().getFullYear();
@@ -25,7 +39,7 @@ export function useDashboard() {
 
     // 1. Current Balance — sum of active account balances converted to BDT (excluding accounts with unavailable rates)
     let hasUnavailableRates = false;
-    const currentBalance = allAccounts
+    const fiatBalance = allAccounts
       .filter((a) => a.is_active)
       .reduce((sum, a) => {
         const bdtVal = calculateAccountBdtBalance(a, allTransactions, rates);
@@ -35,6 +49,7 @@ export function useDashboard() {
         }
         return sum + bdtVal;
       }, 0);
+    const currentBalance = fiatBalance + cryptoBalance;
 
     // 2. Today's Expense (converted to BDT)
     const todaysExpense = allTransactions
@@ -143,5 +158,5 @@ export function useDashboard() {
       topCategories,
       monthlyTrendData,
     };
-  }, [accounts, txResult, categories, ratesData, isLoading]);
+  }, [accounts, txResult, categories, ratesData, cryptoHoldings, cryptoAssets, cryptoPrices, isLoading]);
 }

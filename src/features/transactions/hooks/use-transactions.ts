@@ -2,10 +2,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import {
   TransactionWithCategoryAndAccount,
-  TransactionInsert,
-  TransactionUpdate,
 } from "@/types";
 import { TransactionFormInput } from "../schemas/transaction-schema";
+import { calculateCryptoBdtValue } from "@/lib/crypto-valuation";
+
+async function getCryptoTransactionValuation(input: TransactionFormInput) {
+  if (!input.crypto_asset_id || !input.crypto_quantity || !input.crypto_code) return null;
+  const response = await fetch(`/api/crypto-prices?codes=${encodeURIComponent(input.crypto_code)}`);
+  if (!response.ok) throw new Error("Unable to value cryptocurrency transaction. Your holding was not changed.");
+  const prices = await response.json();
+  const price = prices.prices?.[input.crypto_code]?.bdtPrice;
+  if (!price) throw new Error("Current cryptocurrency price is unavailable. Your holding was not changed.");
+  return calculateCryptoBdtValue(input.crypto_quantity, price) as string;
+}
 
 export interface TransactionFilterOptions {
   type?: "all" | "income" | "expense" | "transfer";
@@ -45,6 +54,7 @@ export function useTransactions(options: TransactionFilterOptions = {}) {
           *,
           account:accounts!transactions_account_id_fkey(id, name, type, currency),
           transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type, currency),
+          crypto_asset:crypto_assets(id, code, name),
           category:categories(id, name, icon, color)
         `,
           { count: "exact" }
@@ -122,7 +132,12 @@ export function useCreateTransaction() {
       let exchange_rate = 1.0;
       let bdt_amount = Number(input.amount) || 0;
 
-      if (txCurrency !== "BDT") {
+      const cryptoBdtAmount = await getCryptoTransactionValuation(input);
+      if (cryptoBdtAmount) {
+        bdt_amount = Number(cryptoBdtAmount);
+      }
+
+      if (!cryptoBdtAmount && txCurrency !== "BDT") {
         try {
           const res = await fetch("/api/exchange-rates");
           if (res.ok) {
@@ -144,10 +159,12 @@ export function useCreateTransaction() {
         category_id: input.type === "transfer" ? null : input.category_id || null,
         transfer_account_id: input.type === "transfer" ? input.transfer_account_id || null : null,
         type: input.type,
-        amount: input.amount,
-        currency: txCurrency,
+        amount: cryptoBdtAmount ? Number(cryptoBdtAmount) : input.amount,
+        currency: cryptoBdtAmount ? "BDT" : txCurrency,
         exchange_rate,
-        bdt_amount: Number(bdt_amount.toFixed(2)),
+        bdt_amount: cryptoBdtAmount || Number(bdt_amount.toFixed(2)),
+        crypto_asset_id: input.crypto_asset_id && input.crypto_quantity ? input.crypto_asset_id : null,
+        crypto_quantity: input.crypto_quantity || null,
         date: input.date,
         payee_merchant: input.payee_merchant || null,
         description: input.description || null,
@@ -161,6 +178,7 @@ export function useCreateTransaction() {
           *,
           account:accounts!transactions_account_id_fkey(id, name, type, currency),
           transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type, currency),
+          crypto_asset:crypto_assets(id, code, name),
           category:categories(id, name, icon, color)
         `)
         .single();
@@ -236,6 +254,7 @@ export function useUpdateTransaction() {
           *,
           account:accounts!transactions_account_id_fkey(id, name, type),
           transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type),
+          crypto_asset:crypto_assets(id, code, name),
           category:categories(id, name, icon, color)
         `)
         .single();

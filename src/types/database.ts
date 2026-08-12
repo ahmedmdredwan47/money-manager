@@ -64,6 +64,49 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["accounts"]["Insert"]>;
       };
+      crypto_assets: {
+        Row: {
+          id: string;
+          code: string;
+          name: string;
+          decimal_precision: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          name: string;
+          decimal_precision: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["crypto_assets"]["Insert"]>;
+      };
+      crypto_holdings: {
+        Row: {
+          id: string;
+          user_id: string;
+          account_id: string;
+          crypto_asset_id: string;
+          quantity: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          account_id: string;
+          crypto_asset_id: string;
+          /** Decimal string. Never coerce crypto quantities to a JS number. */
+          quantity: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["crypto_holdings"]["Insert"]>;
+      };
       categories: {
         Row: {
           id: string;
@@ -101,6 +144,9 @@ export interface Database {
           currency: string;
           exchange_rate: number | null;
           bdt_amount: number | null;
+          crypto_asset_id: string | null;
+          /** Decimal string. Never coerce crypto quantities to a JS number. */
+          crypto_quantity: string | null;
           date: string;
           payee_merchant: string | null;
           description: string | null;
@@ -119,6 +165,8 @@ export interface Database {
           currency?: string;
           exchange_rate?: number | null;
           bdt_amount?: number | null;
+          crypto_asset_id?: string | null;
+          crypto_quantity?: string | null;
           date?: string;
           payee_merchant?: string | null;
           description?: string | null;

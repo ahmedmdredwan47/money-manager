@@ -13,6 +13,10 @@ import {
 import { useCreateTransaction, useUpdateTransaction } from "../hooks/use-transactions";
 import { useAccounts } from "@/features/accounts/hooks/use-accounts";
 import { useCategories } from "@/features/categories/hooks/use-categories";
+import { useCryptoHoldings } from "@/features/crypto-holdings/hooks/use-crypto-holdings";
+import { useCryptoAssets } from "@/features/crypto-holdings/hooks/use-crypto-assets";
+import { compareDecimalStrings } from "@/lib/crypto-valuation";
+import { formatCryptoQuantity } from "@/features/crypto-holdings/utils";
 import { TransactionWithCategoryAndAccount } from "@/types";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -35,6 +39,8 @@ export function TransactionFormDialog({
 
   const { data: accounts } = useAccounts();
   const { data: categories } = useCategories();
+  const { data: cryptoHoldings = [] } = useCryptoHoldings();
+  const { data: cryptoAssets = [] } = useCryptoAssets();
 
   const createTxMutation = useCreateTransaction();
   const updateTxMutation = useUpdateTransaction();
@@ -66,6 +72,13 @@ export function TransactionFormDialog({
 
   const selectedType = watch("type");
   const selectedAccountId = watch("account_id");
+  const [cryptoQuantity, setCryptoQuantity] = useState("");
+  const selectedCryptoHolding = cryptoHoldings.find((holding) => holding.account_id === selectedAccountId);
+  const selectedCryptoAsset = selectedCryptoHolding
+    ? cryptoAssets.find((asset) => asset.id === selectedCryptoHolding.crypto_asset_id)
+    : undefined;
+  const isCryptoAccount = Boolean(selectedCryptoHolding && selectedCryptoAsset);
+  const isCryptoTransaction = Boolean(transactionToEdit?.crypto_quantity);
 
   // Auto-sync transaction currency with selected account's currency
   useEffect(() => {
@@ -76,6 +89,15 @@ export function TransactionFormDialog({
       }
     }
   }, [selectedAccountId, accounts, setValue, transactionToEdit]);
+
+  useEffect(() => {
+    if (isCryptoAccount) {
+      // Amount remains a required legacy monetary field; the mutation replaces
+      // it with the price-derived BDT valuation while retaining the quantity.
+      setValue("amount", 1);
+      setValue("currency", "BDT");
+    }
+  }, [isCryptoAccount, setValue]);
 
   useEffect(() => {
     if (transactionToEdit) {
@@ -117,6 +139,17 @@ export function TransactionFormDialog({
   const onSubmit = async (data: TransactionFormInput) => {
     setError(null);
     try {
+      if (isCryptoTransaction) throw new Error("Crypto transactions are immutable to preserve the recorded holding movement.");
+      if (isCryptoAccount) {
+        if (!/^\d+(?:\.\d+)?$/.test(cryptoQuantity) || /^0(?:\.0+)?$/.test(cryptoQuantity)) {
+          throw new Error("Enter a positive cryptocurrency quantity using decimal notation.");
+        }
+        if (data.type === "transfer") throw new Error("Crypto transfers are not supported yet. Choose Add Crypto or Remove / Sell Crypto.");
+        if (data.type === "expense" && compareDecimalStrings(cryptoQuantity, selectedCryptoHolding!.quantity) > 0) {
+          throw new Error(`Cannot remove more than your ${formatCryptoQuantity(selectedCryptoHolding!.quantity)} ${selectedCryptoAsset!.code} holding.`);
+        }
+        data = { ...data, crypto_asset_id: selectedCryptoAsset!.id, crypto_quantity: cryptoQuantity, crypto_code: selectedCryptoAsset!.code };
+      }
       if (isEditing && transactionToEdit) {
         await updateTxMutation.mutateAsync({
           id: transactionToEdit.id,
@@ -139,7 +172,7 @@ export function TransactionFormDialog({
       description={
         isEditing
           ? "Update details, amount, category, or account attachment."
-          : "Log a new Income, Expense, or Account Transfer entry."
+          : "Log a new Income, Expense, Account Transfer, or crypto holding entry."
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -155,8 +188,8 @@ export function TransactionFormDialog({
           <label className="text-xs font-semibold text-muted-foreground">Entry Type</label>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { id: "expense", label: "Expense", icon: TrendingDown, color: "text-rose-500" },
-              { id: "income", label: "Income", icon: TrendingUp, color: "text-emerald-500" },
+              { id: "expense", label: isCryptoAccount ? "Remove / Sell" : "Expense", icon: TrendingDown, color: "text-rose-500" },
+              { id: "income", label: isCryptoAccount ? "Add Crypto" : "Income", icon: TrendingUp, color: "text-emerald-500" },
               { id: "transfer", label: "Transfer", icon: ArrowRightLeft, color: "text-blue-500" },
             ].map((t) => {
               const Icon = t.icon;
@@ -184,7 +217,11 @@ export function TransactionFormDialog({
         </div>
 
         {/* Amount & Currency */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {isCryptoAccount ? <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3 space-y-2">
+          <div className="flex items-center justify-between"><label className="text-xs font-semibold text-muted-foreground">{selectedType === "expense" ? "Quantity to remove / sell" : "Quantity to add"}</label><span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{selectedCryptoAsset!.name} ({selectedCryptoAsset!.code})</span></div>
+          <Input value={cryptoQuantity} onChange={(event) => setCryptoQuantity(event.target.value)} inputMode="decimal" placeholder="0.00000001" className="h-10 font-mono text-base font-bold" />
+          <p className="text-[11px] text-muted-foreground">Current holding: <span className="font-mono font-semibold">{formatCryptoQuantity(selectedCryptoHolding!.quantity)} {selectedCryptoAsset!.code}</span>. BDT value is captured at transaction time.</p>
+        </div> : <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2 space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground">Amount</label>
             <Input
@@ -210,7 +247,7 @@ export function TransactionFormDialog({
               <p className="text-xs text-rose-500 font-medium">{errors.currency.message}</p>
             )}
           </div>
-        </div>
+        </div>}
 
         {/* Account Selection */}
         {selectedType === "transfer" ? (
@@ -225,7 +262,7 @@ export function TransactionFormDialog({
                 <option value="">Select Source Account</option>
                 {(accounts || []).map((acc) => (
                   <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.currency || "BDT"})
+                    {acc.name} ({cryptoAssets.find((asset) => asset.id === cryptoHoldings.find((holding) => holding.account_id === acc.id)?.crypto_asset_id)?.code || acc.currency || "BDT"})
                   </option>
                 ))}
               </select>
@@ -244,7 +281,7 @@ export function TransactionFormDialog({
                 <option value="">Select Destination Account</option>
                 {(accounts || []).map((acc) => (
                   <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.currency || "BDT"})
+                    {acc.name} ({cryptoAssets.find((asset) => asset.id === cryptoHoldings.find((holding) => holding.account_id === acc.id)?.crypto_asset_id)?.code || acc.currency || "BDT"})
                   </option>
                 ))}
               </select>
@@ -267,7 +304,7 @@ export function TransactionFormDialog({
                 <option value="">Select Account</option>
                 {(accounts || []).map((acc) => (
                   <option key={acc.id} value={acc.id}>
-                    {acc.name} ({acc.currency || "BDT"})
+                    {acc.name} ({cryptoAssets.find((asset) => asset.id === cryptoHoldings.find((holding) => holding.account_id === acc.id)?.crypto_asset_id)?.code || acc.currency || "BDT"})
                   </option>
                 ))}
               </select>
