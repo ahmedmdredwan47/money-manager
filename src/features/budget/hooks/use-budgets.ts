@@ -4,6 +4,7 @@ import { Budget, BudgetInsert, BudgetUpdate, Category, TransactionWithCategoryAn
 import { BudgetFormInput } from "../schemas/budget-schema";
 import { useCategories } from "@/features/categories/hooks/use-categories";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
+import { useExchangeRates, getTransactionBdtAmount } from "@/lib/exchange-rates";
 
 export interface BudgetWithCalculations extends Budget {
   category: Category | null;
@@ -18,6 +19,7 @@ export function useBudgets(targetMonthStr?: string) {
   const supabase = createClient();
   const { data: categories } = useCategories();
   const { data: txResult } = useTransactions({ pageSize: 500 });
+  const { data: ratesData } = useExchangeRates();
 
   const today = new Date();
   const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
@@ -49,8 +51,9 @@ export function useBudgets(targetMonthStr?: string) {
       }
 
       const rawBudgets = (data as Budget[]) || [];
+      const rates = ratesData?.rates ?? { BDT: 1 };
 
-      // Aggregate expense transactions for target month
+      // Aggregate expense transactions for target month (in BDT)
       const categorySpentMap: Record<string, number> = {};
       allTransactions
         .filter((t) => {
@@ -58,7 +61,7 @@ export function useBudgets(targetMonthStr?: string) {
           return t.date.startsWith(targetMonth);
         })
         .forEach((t) => {
-          categorySpentMap[t.category_id!] = (categorySpentMap[t.category_id!] || 0) + t.amount;
+          categorySpentMap[t.category_id!] = (categorySpentMap[t.category_id!] || 0) + getTransactionBdtAmount(t, rates);
         });
 
       return rawBudgets.map((b) => {

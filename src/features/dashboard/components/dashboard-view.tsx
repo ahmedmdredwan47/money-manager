@@ -15,6 +15,9 @@ export function DashboardView() {
   const {
     isLoading,
     currentBalance,
+    usingFallbackRates,
+    hasUnavailableRates,
+    ratesFetchedAt,
     todaysExpense,
     thisMonthIncome,
     thisMonthExpense,
@@ -63,6 +66,9 @@ export function DashboardView() {
       {/* 1. 5 KPI Stat Cards */}
       <DashboardKpiGrid
         currentBalance={currentBalance}
+        usingFallbackRates={usingFallbackRates}
+        hasUnavailableRates={hasUnavailableRates}
+        ratesFetchedAt={ratesFetchedAt}
         todaysExpense={todaysExpense}
         thisMonthIncome={thisMonthIncome}
         thisMonthExpense={thisMonthExpense}

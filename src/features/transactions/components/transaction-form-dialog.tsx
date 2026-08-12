@@ -65,13 +65,24 @@ export function TransactionFormDialog({
   });
 
   const selectedType = watch("type");
+  const selectedAccountId = watch("account_id");
+
+  // Auto-sync transaction currency with selected account's currency
+  useEffect(() => {
+    if (!transactionToEdit && selectedAccountId && accounts) {
+      const acc = accounts.find((a) => a.id === selectedAccountId);
+      if (acc && acc.currency) {
+        setValue("currency", acc.currency);
+      }
+    }
+  }, [selectedAccountId, accounts, setValue, transactionToEdit]);
 
   useEffect(() => {
     if (transactionToEdit) {
       reset({
         type: transactionToEdit.type as TransactionTypeEnum,
         amount: transactionToEdit.amount,
-        currency: transactionToEdit.currency || "BDT",
+        currency: transactionToEdit.currency || transactionToEdit.account?.currency || "BDT",
         account_id: transactionToEdit.account_id,
         category_id: transactionToEdit.category_id || "",
         transfer_account_id: transactionToEdit.transfer_account_id || "",
@@ -81,11 +92,12 @@ export function TransactionFormDialog({
         status: transactionToEdit.status as any,
       });
     } else {
+      const initialAcc = accounts && accounts.length > 0 ? accounts[0] : null;
       reset({
         type: "expense",
         amount: 0,
-        currency: "BDT",
-        account_id: accounts && accounts.length > 0 ? accounts[0].id : "",
+        currency: initialAcc?.currency || "BDT",
+        account_id: initialAcc?.id || "",
         category_id: "",
         transfer_account_id: "",
         date: today,

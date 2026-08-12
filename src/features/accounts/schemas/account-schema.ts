@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SUPPORTED_CURRENCIES } from "@/lib/currencies";
 
 export const accountTypes = [
   "bank",
@@ -32,6 +33,10 @@ export const accountTypeLabels: Record<AccountTypeEnum, string> = {
   other: "Other Financial Account",
 };
 
+/** Derive the enum tuple from SUPPORTED_CURRENCIES so adding a new currency
+ *  to currencies.ts is the only change needed. */
+const currencyCodes = SUPPORTED_CURRENCIES.map((c) => c.code) as [string, ...string[]];
+
 export const accountSchema = z.object({
   name: z
     .string()
@@ -43,10 +48,10 @@ export const accountSchema = z.object({
   balance: z.coerce.number({
     invalid_type_error: "Please enter a valid initial balance",
   }),
-  currency: z
-    .string()
-    .min(1, "Currency code is required")
-    .max(5, "Currency code must be 5 characters or fewer"),
+  currency: z.enum(currencyCodes as [string, ...string[]], {
+    required_error: "Please select a currency",
+    invalid_type_error: "Please select a valid currency",
+  }),
   account_number_last4: z
     .string()
     .max(4, "Last 4 digits must not exceed 4 characters")

@@ -2,6 +2,9 @@
 
 import React, { useState } from "react";
 import { useAccounts, useDeleteAccount } from "../hooks/use-accounts";
+import { useTransactions } from "@/features/transactions/hooks/use-transactions";
+import { calculateAccountBalance, getAccountBalanceDetails } from "@/lib/account-utils";
+import { useExchangeRates, convertToBDT } from "@/lib/exchange-rates";
 import { AccountCard } from "./account-card";
 import { Account } from "@/types";
 import { formatCurrency } from "@/lib/utils";
@@ -30,12 +33,18 @@ export function AccountsList({
   onOpenCreateDialog,
   onEditAccount,
 }: AccountsListProps) {
-  const { data: accounts, isLoading, isError, error } = useAccounts();
+  const { data: accounts, isLoading: accountsLoading, isError: accountsError, error: accError } = useAccounts();
+  const { data: txResult, isLoading: txLoading, isError: txError, error: txErr } = useTransactions({ pageSize: 500 });
   const deleteAccountMutation = useDeleteAccount();
+  const { data: ratesData } = useExchangeRates();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "bank" | "mfs" | "cash" | "card">("all");
   const [accountToDelete, setAccountToDelete] = useState<string | null>(null);
+
+  const isLoading = accountsLoading || txLoading;
+  const isError = accountsError || txError;
+  const error = accError || txErr;
 
   if (isLoading) {
     return (
@@ -61,7 +70,14 @@ export function AccountsList({
     );
   }
 
-  const allAccounts = accounts || [];
+  const allTransactions = txResult?.data || [];
+  const rawAccounts = accounts || [];
+  const rates = ratesData?.rates ?? { BDT: 1 };
+
+  // Calculate accounts with live dynamic balance (preserving native_balance & calculating bdt_equivalent)
+  const allAccounts = rawAccounts.map((acc) =>
+    getAccountBalanceDetails(acc, allTransactions, rates)
+  );
 
   // Filter accounts
   const filteredAccounts = allAccounts.filter((acc) => {
@@ -79,14 +95,16 @@ export function AccountsList({
     return true;
   });
 
-  // Calculate Summary metrics
-  const totalBalance = allAccounts.reduce((sum, acc) => sum + (acc.is_active ? acc.balance : 0), 0);
+  // Calculate Summary metrics — using pre-calculated bdt_equivalent for reporting (excluding accounts with unavailable rates)
+  const totalBalance = allAccounts
+    .filter((acc) => acc.is_active && acc.bdt_equivalent !== null)
+    .reduce((sum, acc) => sum + (acc.bdt_equivalent ?? 0), 0);
   const bankBalance = allAccounts
-    .filter((a) => a.type === "bank" || a.type === "checking" || a.type === "savings")
-    .reduce((sum, acc) => sum + acc.balance, 0);
+    .filter((a) => (a.type === "bank" || a.type === "checking" || a.type === "savings") && a.bdt_equivalent !== null)
+    .reduce((sum, acc) => sum + (acc.bdt_equivalent ?? 0), 0);
   const mfsBalance = allAccounts
-    .filter((a) => a.type === "bkash" || a.type === "nagad" || a.type === "rocket")
-    .reduce((sum, acc) => sum + acc.balance, 0);
+    .filter((a) => (a.type === "bkash" || a.type === "nagad" || a.type === "rocket") && a.bdt_equivalent !== null)
+    .reduce((sum, acc) => sum + (acc.bdt_equivalent ?? 0), 0);
 
   const confirmDelete = async () => {
     if (!accountToDelete) return;
@@ -202,6 +220,9 @@ export function AccountsList({
               account={acc}
               onEdit={onEditAccount}
               onDelete={(id) => setAccountToDelete(id)}
+              rates={ratesData?.rates}
+              ratesFetchedAt={ratesData?.fetchedAt}
+              ratesAreFallback={ratesData?.usingFallback}
             />
           ))}
         </div>

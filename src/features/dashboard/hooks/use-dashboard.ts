@@ -2,11 +2,14 @@ import { useMemo } from "react";
 import { useAccounts } from "@/features/accounts/hooks/use-accounts";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
 import { useCategories } from "@/features/categories/hooks/use-categories";
+import { calculateAccountBalance, calculateAccountBdtBalance } from "@/lib/account-utils";
+import { useExchangeRates, convertToBDT, getTransactionBdtAmount } from "@/lib/exchange-rates";
 
 export function useDashboard() {
   const { data: accounts, isLoading: accountsLoading } = useAccounts();
   const { data: txResult, isLoading: txLoading } = useTransactions({ pageSize: 500 });
   const { data: categories } = useCategories();
+  const { data: ratesData } = useExchangeRates();
 
   const isLoading = accountsLoading || txLoading;
 
@@ -14,29 +17,38 @@ export function useDashboard() {
     const allAccounts = accounts || [];
     const allTransactions = txResult?.data || [];
     const allCategories = categories || [];
+    const rates = ratesData?.rates ?? { BDT: 1 };
 
     const todayStr = new Date().toISOString().split("T")[0];
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth();
 
-    // 1. Current Balance (Sum of active accounts)
+    // 1. Current Balance — sum of active account balances converted to BDT (excluding accounts with unavailable rates)
+    let hasUnavailableRates = false;
     const currentBalance = allAccounts
       .filter((a) => a.is_active)
-      .reduce((sum, a) => sum + Number(a.balance), 0);
+      .reduce((sum, a) => {
+        const bdtVal = calculateAccountBdtBalance(a, allTransactions, rates);
+        if (bdtVal === null) {
+          hasUnavailableRates = true;
+          return sum; // Strictly exclude unavailable conversions from combined BDT sum
+        }
+        return sum + bdtVal;
+      }, 0);
 
-    // 2. Today's Expense
+    // 2. Today's Expense (converted to BDT)
     const todaysExpense = allTransactions
       .filter((t) => t.type === "expense" && t.date === todayStr)
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
-    // 3. This Month Income & Expense
+    // 3. This Month Income & Expense (converted to BDT)
     const thisMonthIncome = allTransactions
       .filter((t) => {
         if (t.type !== "income") return false;
         const d = new Date(t.date);
         return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       })
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
     const thisMonthExpense = allTransactions
       .filter((t) => {
@@ -44,9 +56,9 @@ export function useDashboard() {
         const d = new Date(t.date);
         return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
       })
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+      .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
-    // 4. Monthly Savings & Savings Rate
+    // 4. Monthly Savings & Savings Rate (both in BDT)
     const monthlySavings = thisMonthIncome - thisMonthExpense;
     const savingsRate =
       thisMonthIncome > 0 ? Math.max(0, Math.min(100, (monthlySavings / thisMonthIncome) * 100)) : 0;
@@ -56,13 +68,13 @@ export function useDashboard() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 5);
 
-    // 6. Category Breakdown (Expense distribution for Pie Chart & Top Categories)
+    // 6. Category Breakdown (Expense distribution in BDT for Pie Chart & Top Categories)
     const categoryTotals: Record<string, number> = {};
     allTransactions
       .filter((t) => t.type === "expense")
       .forEach((t) => {
         const catName = t.category?.name || "Uncategorized";
-        categoryTotals[catName] = (categoryTotals[catName] || 0) + Number(t.amount);
+        categoryTotals[catName] = (categoryTotals[catName] || 0) + getTransactionBdtAmount(t, rates);
       });
 
     const categoryBreakdownData = Object.entries(categoryTotals)
@@ -83,7 +95,7 @@ export function useDashboard() {
       percentage: totalExpenseSum > 0 ? (c.value / totalExpenseSum) * 100 : 0,
     }));
 
-    // 7. Monthly Cash Flow Trend (Last 6 Months Area Chart)
+    // 7. Monthly Cash Flow Trend (Last 6 Months Area Chart in BDT)
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const monthlyTrendData = Array.from({ length: 6 }).map((_, i) => {
       const d = new Date();
@@ -98,7 +110,7 @@ export function useDashboard() {
           const td = new Date(t.date);
           return td.getFullYear() === year && td.getMonth() === monthIdx;
         })
-        .reduce((s, t) => s + Number(t.amount), 0);
+        .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
       const monthExpense = allTransactions
         .filter((t) => {
@@ -106,7 +118,7 @@ export function useDashboard() {
           const td = new Date(t.date);
           return td.getFullYear() === year && td.getMonth() === monthIdx;
         })
-        .reduce((s, t) => s + Number(t.amount), 0);
+        .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
       return {
         month: monthLabel,
@@ -118,6 +130,9 @@ export function useDashboard() {
     return {
       isLoading,
       currentBalance,
+      usingFallbackRates: ratesData?.usingFallback ?? false,
+      hasUnavailableRates,
+      ratesFetchedAt: ratesData?.fetchedAt,
       todaysExpense,
       thisMonthIncome,
       thisMonthExpense,
@@ -128,5 +143,5 @@ export function useDashboard() {
       topCategories,
       monthlyTrendData,
     };
-  }, [accounts, txResult, categories, isLoading]);
+  }, [accounts, txResult, categories, ratesData, isLoading]);
 }

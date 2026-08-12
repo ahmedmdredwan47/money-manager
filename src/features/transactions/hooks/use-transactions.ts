@@ -43,8 +43,8 @@ export function useTransactions(options: TransactionFilterOptions = {}) {
         .select(
           `
           *,
-          account:accounts!transactions_account_id_fkey(id, name, type),
-          transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type),
+          account:accounts!transactions_account_id_fkey(id, name, type, currency),
+          transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type, currency),
           category:categories(id, name, icon, color)
         `,
           { count: "exact" }
@@ -118,14 +118,36 @@ export function useCreateTransaction() {
         console.warn("Could not upsert profile record:", profileErr);
       }
 
-      const newTxPayload: TransactionInsert = {
+      const txCurrency = input.currency || "BDT";
+      let exchange_rate = 1.0;
+      let bdt_amount = Number(input.amount) || 0;
+
+      if (txCurrency !== "BDT") {
+        try {
+          const res = await fetch("/api/exchange-rates");
+          if (res.ok) {
+            const ratesJson = await res.json();
+            const currentRate = ratesJson.rates?.[txCurrency];
+            if (currentRate && currentRate > 0) {
+              exchange_rate = currentRate;
+              bdt_amount = (Number(input.amount) || 0) / currentRate;
+            }
+          }
+        } catch {
+          // Fallback gracefully
+        }
+      }
+
+      const newTxPayload: any = {
         user_id: user.id,
         account_id: input.account_id,
         category_id: input.type === "transfer" ? null : input.category_id || null,
         transfer_account_id: input.type === "transfer" ? input.transfer_account_id || null : null,
         type: input.type,
         amount: input.amount,
-        currency: input.currency || "BDT",
+        currency: txCurrency,
+        exchange_rate,
+        bdt_amount: Number(bdt_amount.toFixed(2)),
         date: input.date,
         payee_merchant: input.payee_merchant || null,
         description: input.description || null,
@@ -137,8 +159,8 @@ export function useCreateTransaction() {
         .insert(newTxPayload)
         .select(`
           *,
-          account:accounts!transactions_account_id_fkey(id, name, type),
-          transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type),
+          account:accounts!transactions_account_id_fkey(id, name, type, currency),
+          transfer_account:accounts!transactions_transfer_account_id_fkey(id, name, type, currency),
           category:categories(id, name, icon, color)
         `)
         .single();
@@ -169,13 +191,35 @@ export function useUpdateTransaction() {
         throw new Error("You must be signed in to update a transaction.");
       }
 
-      const updatePayload: TransactionUpdate = {
+      const txCurrency = input.currency || "BDT";
+      let exchange_rate = 1.0;
+      let bdt_amount = Number(input.amount) || 0;
+
+      if (txCurrency !== "BDT") {
+        try {
+          const res = await fetch("/api/exchange-rates");
+          if (res.ok) {
+            const ratesJson = await res.json();
+            const currentRate = ratesJson.rates?.[txCurrency];
+            if (currentRate && currentRate > 0) {
+              exchange_rate = currentRate;
+              bdt_amount = (Number(input.amount) || 0) / currentRate;
+            }
+          }
+        } catch {
+          // Fallback gracefully
+        }
+      }
+
+      const updatePayload: any = {
         account_id: input.account_id,
         category_id: input.type === "transfer" ? null : input.category_id || null,
         transfer_account_id: input.type === "transfer" ? input.transfer_account_id || null : null,
         type: input.type,
         amount: input.amount,
-        currency: input.currency,
+        currency: txCurrency,
+        exchange_rate,
+        bdt_amount: Number(bdt_amount.toFixed(2)),
         date: input.date,
         payee_merchant: input.payee_merchant || null,
         description: input.description || null,

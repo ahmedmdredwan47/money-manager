@@ -1,12 +1,15 @@
 "use client";
 
 import React from "react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatRelativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wallet, TrendingUp, TrendingDown, Calendar, PiggyBank, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, Calendar, PiggyBank, RefreshCw, ArrowUpRight, ArrowDownRight, AlertTriangle } from "lucide-react";
 
 interface DashboardKpiGridProps {
   currentBalance: number;
+  usingFallbackRates: boolean;
+  hasUnavailableRates?: boolean;
+  ratesFetchedAt?: string;
   todaysExpense: number;
   thisMonthIncome: number;
   thisMonthExpense: number;
@@ -16,6 +19,9 @@ interface DashboardKpiGridProps {
 
 export function DashboardKpiGrid({
   currentBalance,
+  usingFallbackRates,
+  hasUnavailableRates,
+  ratesFetchedAt,
   todaysExpense,
   thisMonthIncome,
   thisMonthExpense,
@@ -38,11 +44,25 @@ export function DashboardKpiGrid({
           <div className="text-2xl font-bold font-mono text-foreground tracking-tight">
             {formatCurrency(currentBalance, "BDT")}
           </div>
-          <div className="mt-2 flex items-center text-xs text-emerald-500 font-medium">
-            <ArrowUpRight className="mr-1 h-3.5 w-3.5" />
-            <span className="font-semibold">+12.4%</span>
-            <span className="ml-1 text-muted-foreground">vs last month</span>
-          </div>
+          {hasUnavailableRates && (
+            <p className="mt-1 text-[10px] text-amber-500 font-medium">
+              * Excludes accounts with unavailable rates
+            </p>
+          )}
+          {usingFallbackRates ? (
+            <div className="mt-1.5 flex items-center gap-1 text-xs text-amber-500 font-medium">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span>Estimated rates (offline)</span>
+            </div>
+          ) : (
+            <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+              <RefreshCw className="h-3 w-3 shrink-0 text-emerald-500" />
+              <span>Rate updated&nbsp;</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                {formatRelativeTime(ratesFetchedAt)}
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

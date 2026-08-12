@@ -99,6 +99,8 @@ export interface Database {
           type: "income" | "expense" | "transfer";
           amount: number;
           currency: string;
+          exchange_rate: number | null;
+          bdt_amount: number | null;
           date: string;
           payee_merchant: string | null;
           description: string | null;
@@ -115,6 +117,8 @@ export interface Database {
           type: "income" | "expense" | "transfer";
           amount: number;
           currency?: string;
+          exchange_rate?: number | null;
+          bdt_amount?: number | null;
           date?: string;
           payee_merchant?: string | null;
           description?: string | null;

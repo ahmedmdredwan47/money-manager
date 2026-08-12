@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Lock } from "lucide-react";
 
 export function ProfileView() {
   const supabase = createClient();
@@ -18,8 +18,10 @@ export function ProfileView() {
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [currency, setCurrency] = useState("BDT");
   const [avatarUrl, setAvatarUrl] = useState("");
+
+  // BDT is the application's fixed base/reporting currency — never editable.
+  const BASE_CURRENCY = "BDT";
 
   useEffect(() => {
     async function fetchProfile() {
@@ -42,7 +44,7 @@ export function ProfileView() {
 
           if (profile) {
             if (profile.full_name) setFullName(profile.full_name);
-            if (profile.currency) setCurrency(profile.currency);
+            // profile.currency is ignored — base currency is always BDT
             if (profile.avatar_url) setAvatarUrl(profile.avatar_url);
           }
         }
@@ -69,7 +71,7 @@ export function ProfileView() {
         {
           id: user.id,
           full_name: fullName,
-          currency,
+          currency: BASE_CURRENCY, // Always BDT — the fixed base/reporting currency
           avatar_url: avatarUrl,
           updated_at: new Date().toISOString(),
         },
@@ -167,14 +169,16 @@ export function ProfileView() {
                 <Input value={email} disabled className="bg-muted/50 opacity-80 cursor-not-allowed" />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Default Currency</label>
-                <Input
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                  placeholder="e.g. BDT, USD, EUR"
-                  maxLength={5}
-                  className="uppercase font-mono"
-                />
+                <label className="text-sm font-medium">Base / Reporting Currency</label>
+                <div className="flex items-center gap-2.5 h-10 px-3 rounded-lg border border-border/50 bg-muted/40 cursor-not-allowed">
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="font-mono text-sm font-bold tracking-wide">BDT</span>
+                  <span className="text-sm text-muted-foreground">Bangladeshi Taka</span>
+                  <Badge variant="outline" className="ml-auto text-[10px] text-muted-foreground">Fixed</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  BDT is the application&apos;s base currency and cannot be changed.
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Avatar URL (Optional)</label>

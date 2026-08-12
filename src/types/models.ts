@@ -75,3 +75,10 @@ export interface SavingsGoalWithProgress extends SavingsGoal {
   percentage_achieved?: number;
   remaining_amount?: number;
 }
+
+export interface AccountWithBalances extends Account {
+  native_balance: number;
+  currency_code: string;
+  bdt_equivalent: number | null;
+}
+

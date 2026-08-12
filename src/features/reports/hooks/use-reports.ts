@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
 import { useCategories } from "@/features/categories/hooks/use-categories";
+import { useExchangeRates, getTransactionBdtAmount } from "@/lib/exchange-rates";
 
 export interface ReportFilterOptions {
   periodMode: "monthly" | "yearly" | "category";
@@ -13,12 +14,14 @@ export interface ReportFilterOptions {
 export function useReports(options: ReportFilterOptions) {
   const { data: txResult, isLoading: txLoading } = useTransactions({ pageSize: 500 });
   const { data: categories, isLoading: catLoading } = useCategories();
+  const { data: ratesData } = useExchangeRates();
 
   const isLoading = txLoading || catLoading;
 
   return useMemo(() => {
     const allTransactions = txResult?.data || [];
     const allCategories = categories || [];
+    const rates = ratesData?.rates ?? { BDT: 1 };
 
     // Filter transactions based on options
     const filteredTransactions = allTransactions.filter((t) => {
@@ -41,20 +44,20 @@ export function useReports(options: ReportFilterOptions) {
       return true;
     });
 
-    // 1. Summary Stats
+    // 1. Summary Stats (in BDT)
     const totalIncome = filteredTransactions
       .filter((t) => t.type === "income")
-      .reduce((s, t) => s + Number(t.amount), 0);
+      .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
     const totalExpense = filteredTransactions
       .filter((t) => t.type === "expense")
-      .reduce((s, t) => s + Number(t.amount), 0);
+      .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
     const netSavings = totalIncome - totalExpense;
     const totalCount = filteredTransactions.length;
     const avgTxSize = totalCount > 0 ? (totalIncome + totalExpense) / totalCount : 0;
 
-    // 2. Chart Series
+    // 2. Chart Series (in BDT)
     let chartSeries: Array<{ label: string; Income: number; Expenses: number }> = [];
 
     if (options.periodMode === "monthly") {
@@ -66,11 +69,11 @@ export function useReports(options: ReportFilterOptions) {
 
         const dayIncome = filteredTransactions
           .filter((t) => t.type === "income" && new Date(t.date).getDate() === dayNum)
-          .reduce((s, t) => s + Number(t.amount), 0);
+          .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
         const dayExpense = filteredTransactions
           .filter((t) => t.type === "expense" && new Date(t.date).getDate() === dayNum)
-          .reduce((s, t) => s + Number(t.amount), 0);
+          .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
         return { label: dayLabel, Income: dayIncome, Expenses: dayExpense };
       });
@@ -82,21 +85,21 @@ export function useReports(options: ReportFilterOptions) {
 
         const mIncome = filteredTransactions
           .filter((t) => t.type === "income" && new Date(t.date).getMonth() + 1 === mNum)
-          .reduce((s, t) => s + Number(t.amount), 0);
+          .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
         const mExpense = filteredTransactions
           .filter((t) => t.type === "expense" && new Date(t.date).getMonth() + 1 === mNum)
-          .reduce((s, t) => s + Number(t.amount), 0);
+          .reduce((s, t) => s + getTransactionBdtAmount(t, rates), 0);
 
         return { label: monthName, Income: mIncome, Expenses: mExpense };
       });
     }
 
-    // 3. Category Breakdown
+    // 3. Category Breakdown (in BDT)
     const catMap: Record<string, number> = {};
     filteredTransactions.forEach((t) => {
       const catName = t.category?.name || (t.type === "transfer" ? "Transfers" : "Uncategorized");
-      catMap[catName] = (catMap[catName] || 0) + Number(t.amount);
+      catMap[catName] = (catMap[catName] || 0) + getTransactionBdtAmount(t, rates);
     });
 
     const totalAmountSum = Object.values(catMap).reduce((s, v) => s + v, 0);
@@ -126,5 +129,5 @@ export function useReports(options: ReportFilterOptions) {
       categoryBreakdown,
       filteredTransactions,
     };
-  }, [txResult, categories, options, isLoading]);
+  }, [txResult, categories, ratesData, options, isLoading]);
 }

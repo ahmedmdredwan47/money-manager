@@ -8,31 +8,34 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { TrendingDown, Plus, ShoppingBag, Home, CreditCard } from "lucide-react";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
+import { useExchangeRates, getTransactionBdtAmount } from "@/lib/exchange-rates";
 import { TransactionFormDialog } from "@/features/transactions/components/transaction-form-dialog";
 
 export function ExpensesView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { data: txResult, isLoading } = useTransactions({ type: "expense", pageSize: 100 });
+  const { data: ratesData } = useExchangeRates();
 
   const expenses = txResult?.data || [];
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
+  const rates = ratesData?.rates ?? { BDT: 1 };
 
-  // Calculate dynamic expense metrics
+  // Calculate dynamic expense metrics in BDT
   const monthlyExpenseTotal = expenses
     .filter((t) => {
       const d = new Date(t.date);
       return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     })
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
   const fixedHousingTotal = expenses
     .filter((t) => t.category?.name?.toLowerCase().includes("housing") || t.category?.name?.toLowerCase().includes("rent"))
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
   const subscriptionsTotal = expenses
     .filter((t) => t.category?.name?.toLowerCase().includes("entertainment") || t.category?.name?.toLowerCase().includes("utility"))
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
   return (
     <div className="space-y-6">
@@ -53,7 +56,7 @@ export function ExpensesView() {
             <ShoppingBag className="h-4 w-4 text-rose-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono">{formatCurrency(monthlyExpenseTotal)}</div>
+            <div className="text-2xl font-bold font-mono">{formatCurrency(monthlyExpenseTotal, "BDT")}</div>
             <p className="text-xs text-muted-foreground mt-1">Total expenses logged this month</p>
           </CardContent>
         </Card>
@@ -64,7 +67,7 @@ export function ExpensesView() {
             <Home className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono">{formatCurrency(fixedHousingTotal)}</div>
+            <div className="text-2xl font-bold font-mono">{formatCurrency(fixedHousingTotal, "BDT")}</div>
             <p className="text-xs text-muted-foreground mt-1">Total spent on housing & bills</p>
           </CardContent>
         </Card>
@@ -75,7 +78,7 @@ export function ExpensesView() {
             <CreditCard className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono">{formatCurrency(subscriptionsTotal)}</div>
+            <div className="text-2xl font-bold font-mono">{formatCurrency(subscriptionsTotal, "BDT")}</div>
             <p className="text-xs text-muted-foreground mt-1">Total spent on leisure & subscriptions</p>
           </CardContent>
         </Card>

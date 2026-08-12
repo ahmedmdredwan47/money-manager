@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { Settings, Bell, Shield, Palette, Database, Save } from "lucide-react";
+import { Settings, Bell, Shield, Palette, Database, Save, Lock } from "lucide-react";
 
 export function SettingsView() {
   return (
@@ -38,21 +38,29 @@ export function SettingsView() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Base / Reporting Currency — fixed, not editable */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Default Currency</label>
-                  <Input defaultValue="USD ($)" />
+                  <label className="text-sm font-medium">Base / Reporting Currency</label>
+                  <div className="flex items-center gap-2.5 h-10 px-3 rounded-lg border border-border/50 bg-muted/40 cursor-not-allowed">
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="font-mono text-sm font-bold tracking-wide">BDT</span>
+                    <span className="text-sm text-muted-foreground">Bangladeshi Taka</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    BDT is the fixed base currency. All totals are reported in BDT.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Time Zone</label>
-                  <Input defaultValue="UTC-05:00 Eastern Time" />
+                  <Input defaultValue="Asia/Dhaka (UTC+06:00)" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Date Format</label>
-                  <Input defaultValue="MM/DD/YYYY" />
+                  <Input defaultValue="DD/MM/YYYY" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">First Day of Week</label>
-                  <Input defaultValue="Sunday" />
+                  <Input defaultValue="Saturday" />
                 </div>
               </div>
             </CardContent>

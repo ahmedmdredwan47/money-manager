@@ -70,7 +70,7 @@ export function useCreateAccount() {
           {
             id: user.id,
             full_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
-            currency: input.currency || "BDT",
+            currency: "BDT", // BDT is the fixed base/reporting currency — never inherit from account
             updated_at: new Date().toISOString(),
           },
           { onConflict: "id" }

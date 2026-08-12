@@ -8,25 +8,28 @@ import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { TrendingUp, Plus, DollarSign, Calendar, Briefcase } from "lucide-react";
 import { useTransactions } from "@/features/transactions/hooks/use-transactions";
+import { useExchangeRates, getTransactionBdtAmount } from "@/lib/exchange-rates";
 import { TransactionFormDialog } from "@/features/transactions/components/transaction-form-dialog";
 
 export function IncomeView() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { data: txResult, isLoading } = useTransactions({ type: "income", pageSize: 100 });
+  const { data: ratesData } = useExchangeRates();
 
   const incomes = txResult?.data || [];
   const currentYear = new Date().getFullYear();
+  const rates = ratesData?.rates ?? { BDT: 1 };
 
-  // Calculate dynamic income metrics
+  // Calculate dynamic income metrics in BDT
   const totalYtdIncome = incomes
     .filter((t) => new Date(t.date).getFullYear() === currentYear)
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
 
   const activeStreamsCount = new Set(incomes.map((t) => t.category?.name || "General")).size;
 
   const primaryStream = incomes.reduce((acc, t) => {
     const name = t.category?.name || t.payee_merchant || "General Income";
-    acc[name] = (acc[name] || 0) + Number(t.amount);
+    acc[name] = (acc[name] || 0) + getTransactionBdtAmount(t, rates);
     return acc;
   }, {} as Record<string, number>);
 
@@ -52,8 +55,8 @@ export function IncomeView() {
             <DollarSign className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono">{formatCurrency(totalYtdIncome)}</div>
-            <p className="text-xs text-emerald-500 font-semibold mt-1">Earned this calendar year</p>
+            <div className="text-2xl font-bold font-mono">{formatCurrency(totalYtdIncome, "BDT")}</div>
+            <p className="text-xs text-emerald-500 font-semibold mt-1">Earned this calendar year (BDT)</p>
           </CardContent>
         </Card>
 

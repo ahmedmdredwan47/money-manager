@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useTransactions, useDeleteTransaction } from "../hooks/use-transactions";
+import { useExchangeRates, getTransactionBdtAmount } from "@/lib/exchange-rates";
 import { TransactionFilters } from "./transaction-filters";
 import { TransactionTable } from "./transaction-table";
 import { TransactionWithCategoryAndAccount } from "@/types";
@@ -37,14 +38,15 @@ export function TransactionsList({
 
   const { data: result, isLoading, isError, error } = useTransactions({
     type,
-    account_id: accountId,
-    category_id: categoryId,
-    search: searchQuery,
+    account_id: accountId || undefined,
+    category_id: categoryId || undefined,
+    search: searchQuery || undefined,
     page,
     pageSize: 10,
   });
 
   const deleteTxMutation = useDeleteTransaction();
+  const { data: ratesData } = useExchangeRates();
 
   const resetFilters = () => {
     setType("all");
@@ -91,14 +93,15 @@ export function TransactionsList({
   const txData = result?.data || [];
   const totalCount = result?.totalCount || 0;
   const totalPages = result?.totalPages || 1;
+  const rates = ratesData?.rates ?? { BDT: 1 };
 
-  // Calculate summary metrics from current view
+  // Calculate summary metrics in BDT from current view
   const totalIncome = txData
     .filter((t) => t.type === "income")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
   const totalExpense = txData
     .filter((t) => t.type === "expense")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + getTransactionBdtAmount(t, rates), 0);
   const netCashflow = totalIncome - totalExpense;
 
   return (

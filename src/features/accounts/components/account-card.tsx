@@ -2,7 +2,8 @@
 
 import React from "react";
 import { Account } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatRelativeTime } from "@/lib/utils";
+import { convertToBDT } from "@/lib/exchange-rates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,15 +22,30 @@ import {
   MoreVertical,
   Pencil,
   Trash2,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 
 interface AccountCardProps {
   account: Account;
   onEdit: (account: Account) => void;
   onDelete: (id: string) => void;
+  /** BDT-denominated exchange rates from useExchangeRates() */
+  rates?: Record<string, number>;
+  /** ISO timestamp of when rates were last fetched from the upstream source */
+  ratesFetchedAt?: string;
+  /** True when fallback (offline) rates are being used */
+  ratesAreFallback?: boolean;
 }
 
-export function AccountCard({ account, onEdit, onDelete }: AccountCardProps) {
+export function AccountCard({
+  account,
+  onEdit,
+  onDelete,
+  rates,
+  ratesFetchedAt,
+  ratesAreFallback,
+}: AccountCardProps) {
   const getAccountStyle = (type: string) => {
     switch (type) {
       case "bank":
@@ -98,6 +114,24 @@ export function AccountCard({ account, onEdit, onDelete }: AccountCardProps) {
   const style = getAccountStyle(account.type);
   const Icon = style.icon;
 
+  // ── Currency conversion info ──────────────────────────────────────────────
+  const currency = account.currency || "BDT";
+  const isForeign = currency !== "BDT";
+
+  // BDT-equivalent of this account's current balance
+  const bdtEquivalent =
+    isForeign && rates
+      ? convertToBDT(account.balance, currency, rates)
+      : null;
+
+  // 1 <currency> = X BDT  (the rate shown to the user)
+  // rates[currency] = how many foreign units per 1 BDT
+  // → 1 foreign unit = 1 / rates[currency] BDT
+  const oneForeignInBdt =
+    isForeign && rates && rates[currency] && rates[currency] > 0
+      ? 1 / rates[currency]
+      : null;
+
   return (
     <Card className="relative overflow-hidden group hover:border-emerald-500/40 transition-all shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -146,25 +180,78 @@ export function AccountCard({ account, onEdit, onDelete }: AccountCardProps) {
         </DropdownMenu>
       </CardHeader>
 
-      <CardContent className="pt-2">
+      <CardContent className="pt-2 space-y-2">
+        {/* Primary balance row */}
         <div className="flex items-baseline justify-between">
           <span className="text-xs text-muted-foreground font-medium">Available Balance</span>
-          <span className="text-[10px] uppercase font-bold text-muted-foreground/70">
-            {account.currency || "BDT"}
-          </span>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground/70">{currency}</span>
         </div>
-        <div className="mt-1 flex items-baseline justify-between">
+
+        <div className="flex items-baseline justify-between">
           <span
             className={`text-2xl font-bold font-mono tracking-tight ${
               account.balance < 0 ? "text-rose-500" : "text-foreground"
             }`}
           >
-            {formatCurrency(account.balance, account.currency || "BDT")}
+            {formatCurrency(account.balance, currency)}
           </span>
           <Badge variant={account.is_active ? "success" : "outline"} className="text-[10px]">
             {account.is_active ? "Active" : "Archived"}
           </Badge>
         </div>
+
+        {/* BDT equivalent block — only for foreign-currency accounts */}
+        {isForeign && (
+          <div className="mt-1 pt-2 border-t border-border/40 space-y-1">
+            {bdtEquivalent !== null ? (
+              <>
+                {/* ≈ ৳ equivalent */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">≈ BDT equivalent</span>
+                  <span
+                    className={`text-sm font-bold font-mono ${
+                      bdtEquivalent < 0 ? "text-rose-500" : "text-emerald-600 dark:text-emerald-400"
+                    }`}
+                  >
+                    {formatCurrency(bdtEquivalent, "BDT")}
+                  </span>
+                </div>
+
+                {/* Rate line: 1 USD = 122.50 BDT */}
+                {oneForeignInBdt !== null && (
+                  <div className="flex items-center justify-between text-[11px] font-mono text-muted-foreground/80 pt-0.5">
+                    <span>1 {currency} = {oneForeignInBdt.toFixed(2)} BDT</span>
+                  </div>
+                )}
+
+                {/* Last updated line */}
+                <div className="flex items-center gap-1 pt-0.5">
+                  {ratesAreFallback ? (
+                    <AlertTriangle className="h-2.5 w-2.5 text-amber-500 shrink-0" />
+                  ) : (
+                    <RefreshCw className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
+                  )}
+                  <span className="text-[10px] text-muted-foreground/60">
+                    {ratesAreFallback
+                      ? "Estimated rate (offline)"
+                      : `Rate updated ${formatRelativeTime(ratesFetchedAt)}`}
+                  </span>
+                </div>
+              </>
+            ) : (
+              /* Rate unavailable case — DO NOT show 1:1 fake conversion */
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 text-xs font-medium">
+                  <span>≈ BDT equivalent</span>
+                  <span className="font-semibold text-[11px]">Unavailable</span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Exchange rate missing for {currency}. Balance excluded from BDT total.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
