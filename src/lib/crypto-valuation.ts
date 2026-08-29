@@ -63,7 +63,11 @@ export function compareDecimalStrings(left: string, right: string): number {
 }
 
 /** Calculates the live BDT value from an unchanged native crypto quantity. */
-export function calculateCryptoBdtValue(quantity: string, bdtPrice: string): string {
+export function calculateCryptoBdtValue(
+  quantity: string,
+  bdtPrice: string,
+  bonusMultiplier?: string
+): string {
   const quantityValue = parseDecimal(quantity);
   const priceValue = parseDecimal(bdtPrice);
   if (quantityValue.sign === -1 || quantityValue.coefficient === BigInt(0)) {
@@ -71,6 +75,9 @@ export function calculateCryptoBdtValue(quantity: string, bdtPrice: string): str
   }
   if (priceValue.sign === -1 || priceValue.coefficient === BigInt(0)) {
     throw new Error("Crypto BDT price must be greater than zero");
+  }
+  if (bonusMultiplier && Number(bonusMultiplier) > 1) {
+    return multiplyDecimalStrings(quantity, multiplyDecimalStrings(bdtPrice, bonusMultiplier));
   }
   return multiplyDecimalStrings(quantity, bdtPrice);
 }
