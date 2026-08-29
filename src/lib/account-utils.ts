@@ -23,7 +23,7 @@ export function calculateAccountBalance(
         return sum - amount;
       }
       if (t.type === "transfer") {
-        return sum - amount; // Money leaves this source account
+        return sum + amount; // Money leaves this source account
       }
     }
 
@@ -73,3 +73,19 @@ export function getAccountBalanceDetails(
     bdt_equivalent,
   };
 }
+
+/**
+ * Calculates total net worth across all active accounts converted into BDT.
+ */
+export function calculateTotalNetWorthBDT(
+  accounts: Account[],
+  transactions: Transaction[],
+  rates: Record<string, number>
+): number {
+  return accounts.reduce((total, account) => {
+    if (account.is_active === false) return total;
+    const bdt = calculateAccountBdtBalance(account, transactions, rates);
+    return total + (bdt ?? 0);
+  }, 0);
+}
+
