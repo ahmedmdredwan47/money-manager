@@ -48,4 +48,32 @@ describe("LogicSubagent", () => {
     expect(findings[0].humanApprovalRequired).toBe(true);
     expect(findings[0].autoFixable).toBe(false);
   });
+
+  it("does NOT report logic defects from test files, specs, or benchmark fixtures containing sum + amount", () => {
+    const testSlice: ContextSlice = {
+      filePath: "scripts/reviewer/__tests__/logic-subagent.test.ts",
+      startLine: 1,
+      endLine: 40,
+      content: `const mock = "+ return sum + amount; // Money leaves this source account";`,
+      changedHunks: [
+        {
+          oldStart: 25,
+          oldLines: 2,
+          newStart: 25,
+          newLines: 2,
+          header: "@@ -25,2 +25,2 @@",
+          lines: [
+            "+        return sum + amount; // Money leaves this source account",
+          ],
+        },
+      ],
+      relatedTestFiles: [],
+      approxTokens: 50,
+    };
+
+    const reviewer = new LogicSubagent();
+    const findings = reviewer.review(testSlice);
+
+    expect(findings).toHaveLength(0);
+  });
 });

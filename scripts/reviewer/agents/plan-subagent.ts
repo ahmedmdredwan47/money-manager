@@ -14,17 +14,21 @@ export class PlanSubagent {
     const reasoning: string[] = [];
 
     for (const file of summary.changedFiles) {
-      const isTestFile = file.filePath.includes(".test.") || file.filePath.includes(".spec.");
+      const isTestOrFixture =
+        file.filePath.includes(".test.") ||
+        file.filePath.includes(".spec.") ||
+        file.filePath.includes("__tests__") ||
+        file.filePath.includes("__mocks__") ||
+        file.filePath.includes("fixtures") ||
+        file.filePath.includes("benchmark");
 
-      // Financial math or crypto logic
+      // Financial math or crypto logic (production files only)
       if (
-        file.riskAreas.includes("financial-logic") ||
-        file.riskAreas.includes("crypto-math")
+        !isTestOrFixture &&
+        (file.riskAreas.includes("financial-logic") || file.riskAreas.includes("crypto-math"))
       ) {
         logicFiles.add(file.filePath);
-        if (!isTestFile) {
-          testCoverageFiles.add(file.filePath);
-        }
+        testCoverageFiles.add(file.filePath);
       }
 
       // Security / Auth / API / Environment
@@ -33,7 +37,7 @@ export class PlanSubagent {
       }
 
       // Any production code change needs test coverage review
-      if (!isTestFile && (file.totalAddedLines > 0 || file.totalDeletedLines > 0)) {
+      if (!isTestOrFixture && (file.totalAddedLines > 0 || file.totalDeletedLines > 0)) {
         testCoverageFiles.add(file.filePath);
       }
 

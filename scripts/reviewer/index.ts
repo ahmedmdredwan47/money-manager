@@ -19,19 +19,48 @@ export interface ReviewerOptions {
   workspaceRoot?: string;
 }
 
+function getGitDiff(workspaceRoot: string): string {
+  const diffStrategies = [
+    "git diff origin/master...HEAD",
+    "git diff master...HEAD",
+    "git diff origin/main...HEAD",
+    "git diff main...HEAD",
+    "git diff HEAD~1",
+    "git diff HEAD",
+  ];
+
+  for (const cmd of diffStrategies) {
+    try {
+      const output = execSync(cmd, { cwd: workspaceRoot, encoding: "utf-8" });
+      if (output && output.trim().length > 0) {
+        try {
+          const workingDiff = execSync("git diff HEAD", { cwd: workspaceRoot, encoding: "utf-8" });
+          if (workingDiff && workingDiff.trim().length > 0) {
+            return output + "\n" + workingDiff;
+          }
+        } catch (_workingErr) {
+          // Working tree diff is optional
+        }
+        return output;
+      }
+    } catch (_cmdErr) {
+      // Continue to next diff strategy
+    }
+  }
+
+  try {
+    return execSync("git diff HEAD", { cwd: workspaceRoot, encoding: "utf-8" });
+  } catch (_headErr) {
+    return "";
+  }
+}
+
 export async function runReviewPipeline(options: ReviewerOptions = {}) {
   const workspaceRoot = options.workspaceRoot ?? process.cwd();
   let rawDiff = options.diffString;
 
   if (!rawDiff) {
-    try {
-      rawDiff = execSync("git diff HEAD", { cwd: workspaceRoot, encoding: "utf-8" });
-      if (!rawDiff.trim()) {
-        rawDiff = execSync("git diff HEAD~1 HEAD", { cwd: workspaceRoot, encoding: "utf-8" });
-      }
-    } catch {
-      rawDiff = "";
-    }
+    rawDiff = getGitDiff(workspaceRoot);
   }
 
   // 1. Parse Diff

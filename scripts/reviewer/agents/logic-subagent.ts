@@ -2,12 +2,32 @@ import { ContextSlice } from "../context/context-manager";
 import { ReviewFinding } from "../types";
 
 /**
+ * Determines if a file path is a test file, mock, benchmark fixture, or spec.
+ */
+export function isTestOrFixturePath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, "/").toLowerCase();
+  return (
+    normalized.includes(".test.") ||
+    normalized.includes(".spec.") ||
+    normalized.includes("/__tests__/") ||
+    normalized.includes("/__mocks__/") ||
+    normalized.includes("/fixtures/") ||
+    normalized.includes("/benchmark/")
+  );
+}
+
+/**
  * Logic Review Subagent
  * Analyzes business logic, mathematical calculations, conditions, state transitions,
- * and account balance rules.
+ * and account balance rules for production code.
  */
 export class LogicSubagent {
   public review(slice: ContextSlice): ReviewFinding[] {
+    // Ignore test files, fixtures, and benchmark specifications
+    if (isTestOrFixturePath(slice.filePath)) {
+      return [];
+    }
+
     const findings: ReviewFinding[] = [];
 
     // Analyze lines in the slice
